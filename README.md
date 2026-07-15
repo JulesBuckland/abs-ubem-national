@@ -19,7 +19,7 @@ Below is the complete computational architecture mapping the flow of data throug
 title: ABS-UBEM Pipeline Architecture
 ---
 flowchart TD
-    %% Styling - University of Manchester Brand Colors
+    %% Styling - University of Manchester Brand Colours
     classDef person fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
     classDef orchestrator fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
     classDef logic fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
@@ -46,9 +46,9 @@ flowchart TD
 
     User -- "Triggers Pipeline" --> CLI
     CLI -- "Loads data" --> InputFS
-    CLI -- "Initializes" --> GP
+    CLI -- "Initialises" --> GP
     GP -- "Passes T* Predictions" --> RSR
-    RSR -- "Passes Orthogonalized Z" --> MCMC
+    RSR -- "Passes Orthogonalised Z" --> MCMC
     MCMC -- "Requests Adjacency Edge-List" --> PySAL
     MCMC -- "Writes Posterior Results" --> OutputFS
 ```
