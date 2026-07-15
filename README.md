@@ -47,7 +47,4 @@ graph TD
     MCMC -- "Exports Decoupled T*" --> Data
 ```
 
-## Core Methodological Innovations
-1. **Gaussian Process (GP) Emulation:** Replaces slow, physical archetype matching with a trained GP surrogate for massive $O(1)$ scaling.
-2. **Sparse 1D ICAR Matrix:** Reduces the $O(N^2)$ memory footprint of standard PyMC spatial models to $O(E)$ using Queen contiguity edge-lists, allowing the model to solve the entire National MSOA graph within 8GB of RAM.
-3. **Restricted Spatial Regression (RSR):** Prevents the spatial random effect ($\omega$) from confounding with the income deprivation index ($Z$) by projecting it onto the orthogonal complement of $Z$.
+
