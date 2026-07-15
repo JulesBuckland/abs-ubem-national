@@ -25,7 +25,12 @@ GP_FEATURES = ["floor_area", "wall_u", "ach", "wwr", "form_code", "hdd"]
 
 logger = setup_logging("BayesianUnifiedNational")
 
-def log_memory(stage_name):
+def log_memory(stage_name: str) -> None:
+    """Logs the current memory usage of the process.
+
+    Args:
+        stage_name (str): The name of the current pipeline stage.
+    """
     if psutil is not None:
         process = psutil.Process(os.getpid())
         mem_mb = process.memory_info().rss / (1024 * 1024)
@@ -33,8 +38,18 @@ def log_memory(stage_name):
     else:
         logger.info(f"[RAM USAGE - {stage_name}]: (psutil not installed, cannot track RAM)")
 
-def _use_csv_baseline(df):
-    """Fallback: merge theoretical_gas_kwh from the analytical CSV baseline."""
+def _use_csv_baseline(df: pd.DataFrame) -> None:
+    """Fallback: merge theoretical_gas_kwh from the analytical CSV baseline.
+
+    Modifies the DataFrame in-place by adding a 'theoretical_gas_kwh' column
+    based on the 'property_type' and 'property_age' archetype mapping.
+
+    Args:
+        df (pd.DataFrame): The household dataframe to modify.
+
+    Raises:
+        ValueError: If any archetype fails to map to the baseline CSV.
+    """
     from src.config.settings import RAW_DIR
     archetypes_path = RAW_DIR / "physics" / "physics_archetypes_baseline.csv"
     archetypes = pd.read_csv(archetypes_path)
@@ -46,7 +61,22 @@ def _use_csv_baseline(df):
     df["theoretical_gas_kwh"] = merged["theoretical_gas_kwh"].values
 
 
-def run_national_unified_model():
+def run_national_unified_model() -> az.InferenceData:
+    """Executes the National Unified Bayesian Inference Model.
+
+    This function performs the following pipeline:
+    1. Loads the synthetic household population and aggregates it to the MSOA level.
+    2. Applies the Gaussian Process (GP) emulator for theoretical heating loads.
+    3. Builds a sparse Queen contiguity spatial matrix (O(E) complexity).
+    4. Projects the income confounder to create a Restricted Spatial Regression (RSR) 
+       orthogonal component.
+    5. Executes a PyMC NUTS sampler (1D ICAR via edge-lists) to decouple 
+       socioeconomic rationing from physical building efficiency.
+    6. Saves the MCMC trace and the decoupled energy metric (T*).
+
+    Returns:
+        az.InferenceData: The generated PyMC posterior trace.
+    """
     logger.info("--- STAGE 3: UNIFIED NATIONAL BAYESIAN MODEL ---")
     log_memory("Initialization")
     
@@ -338,6 +368,8 @@ def run_national_unified_model():
     msoa_stats.to_csv(PROCESSED_DIR / "msoa_unified_results.csv", index=False)
     logger.info("Saved true empirically decoupled T* results.")
     log_memory("Final Exit")
+    
+    return trace
 
 if __name__ == "__main__":
     run_national_unified_model()
