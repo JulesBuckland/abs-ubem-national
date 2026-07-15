@@ -31,3 +31,10 @@ meta/
 .ignored/
 python-installer.exe
 scratch_scripts/
+
+# Private research files
+manuscript/
+github_submission/
+docs/
+GEMINI.md
+TESTING_STRATEGY.md
