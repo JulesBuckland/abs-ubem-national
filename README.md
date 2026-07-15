@@ -10,97 +10,47 @@ To run the fully reproducible Bayesian pipeline:
 python -m src.cli.run_inference
 ```
 
-## System Architecture (C4 Model)
-### Level 1: System Context Diagram
-A high-level view showing the user interaction with the ABS-UBEM software boundary.
+## System Architecture
 
-```mermaid
-graph TD
-    %% University of Manchester Brand Theme
-    classDef person fill:#660099,color:#FFFFFF,stroke:#333333,stroke-width:2px;
-    classDef system fill:#660099,color:#FFFFFF,stroke:#FFCC33,stroke-width:3px;
-
-    User["Energy Researcher<br/>[Person]<br/>Executes the reproducible pipeline"]:::person
-    System["ABS-UBEM<br/>[Software System]<br/>National-scale spatial Bayesian energy model"]:::system
-    
-    User -- "Configures and executes pipeline via CLI" --> System
-```
-
-### Level 2: Container Diagram
-Zooming into the ABS-UBEM software system to show its primary execution containers.
+Below is the complete computational architecture mapping the flow of data through the physics surrogate and Bayesian components.
 
 ```mermaid
 ---
-title: C4 Level 2 Container Diagram - ABS-UBEM Python CLI Architecture
+title: ABS-UBEM Pipeline Architecture
 ---
 flowchart TD
     %% Styling - University of Manchester Brand Colors
     classDef person fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
-    classDef container fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
+    classDef orchestrator fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
+    classDef logic fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
     classDef datastore fill:#333333,color:#ffffff,stroke:#FFCC33,stroke-width:2px
-    classDef boundary fill:none,color:#333333,stroke:#660099,stroke-width:2px,stroke-dasharray: 5 5
+    classDef extLib fill:#f4f4f4,color:#333333,stroke:#333333,stroke-width:2px,stroke-dasharray: 4 4
 
-    %% Legend (Invisible nodes used for legend display)
-    subgraph Legend ["Legend"]
-        direction LR
-        L1["Person"]:::person
-        L2["Application Container"]:::container
-        L3["Data Store Container"]:::datastore
-    end
+    User["Energy Researcher<br/>[Person]<br/>Executes inference pipeline"]:::person
 
-    %% Actors
-    User["👤 Energy Researcher<br/>[Person]<br/>Executes the inference pipeline and reviews posterior results"]:::person
+    InputFS["Input Data Store<br/>[Local File System]<br/>Synthetic Population (.parquet)<br/>Pre-trained Models (.pkl)<br/>MSOA Boundaries"]:::datastore
+    OutputFS["Output Data Store<br/>[Local File System]<br/>Posterior Traces (.nc)<br/>Decoupled Metrics (.csv)"]:::datastore
 
-    %% System Boundary
-    subgraph ABS_UBEM ["ABS-UBEM Local Environment"]
+    CLI["ABS-UBEM CLI Orchestrator<br/>[Python / Rich]<br/>Manages execution flow and state"]:::orchestrator
+
+    subgraph CoreLogic ["Core Physics & Spatial Math"]
         direction TB
+        GP["Gaussian Process Surrogate Model<br/>[Scikit-Learn]<br/>Replaces slow thermodynamic simulations<br/>by mapping housing archetypes to<br/>theoretical energy demand (T*) in O(1) time"]:::logic
         
-        CLI["⚙️ ABS-UBEM Inference CLI<br/>[Container: Python / PyMC / Rich]<br/>Orchestrates spatial matrix building, GP emulator predictions, and NUTS sampling"]:::container
+        RSR["Restricted Spatial Regression (RSR)<br/>[NumPy]<br/>Projects the spatial random effect<br/>onto the orthogonal complement of<br/>the Income Deprivation Index (Z)"]:::logic
         
-        InputFS["📂 Input Data Store<br/>[Container: Local File System]<br/>Stores synthetic population (.parquet), GP emulator (.pkl), and Geo boundaries"]:::datastore
-        
-        OutputFS["💾 Output Data Store<br/>[Container: Local File System]<br/>Stores MCMC traces (.nc), decoupled energy metrics (.csv), and WAIC logs"]:::datastore
-    end
-    class ABS_UBEM boundary
-
-    %% Relationships
-    User -- "Runs inference and monitors dashboard via<br/>[Terminal/CLI]" --> CLI
-    CLI -- "Reads configuration, models, and spatial data from<br/>[File I/O]" --> InputFS
-    CLI -- "Writes posterior traces and T* results to<br/>[File I/O]" --> OutputFS
-```
-
-### Level 3: Component Diagram (ABS-UBEM Application)
-Zooming inside the application runtime to show the Python logic modules handling the physics-to-spatial pipeline.
-
-```mermaid
-graph TD
-    %% University of Manchester Brand Theme
-    classDef component fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:2px;
-    classDef database fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px;
-    classDef extLib fill:#333333,color:#FFFFFF,stroke:#FFCC33,stroke-width:2px,stroke-dasharray: 5 5;
-
-    subgraph ABS-UBEM Application Boundary
-        CLI["CLI Orchestrator<br/>[Python / Rich]<br/>Entry point and progress management"]:::component
-        GP["GP Emulator Component<br/>[Python / Scikit-Learn]<br/>Replaces slow archetype matching with O(1) surrogate"]:::component
-        RSR["RSR Component<br/>[Python / NumPy]<br/>Orthogonally projects spatial effects away from Z-confounders"]:::component
-        MCMC["Bayesian Inference Engine<br/>[Python / PyMC]<br/>Executes Sparse 1D Queen-contiguity ICAR"]:::component
-        Data[("Local File System<br/>[Parquet / CSV]<br/>Stores synthetic populations and empirical targets")]:::database
+        MCMC["Bayesian Inference Engine<br/>[PyMC NUTS Sampler]<br/>Solves the national-scale spatial graph<br/>using a Sparse 1D Queen-contiguity ICAR prior"]:::logic
     end
     
-    PySAL["GeoPandas / PySAL<br/>[External Library]<br/>Builds the spatial adjacency matrix"]:::extLib
+    PySAL["GeoPandas / PySAL<br/>[External Library]<br/>Builds the MSOA spatial adjacency matrix"]:::extLib
 
-    CLI -- "Reads configuration and data" --> Data
-    CLI -- "Triggers emulation" --> GP
-    GP -- "T* (Theoretical Energy) Predictions" --> RSR
-    RSR -- "Orthogonalized Z-Confounders" --> MCMC
-    MCMC -- "Reads Empirical KWh" --> Data
-    MCMC -- "Requests Edge-list" --> PySAL
-    MCMC -- "Writes Posterior Decoupled T*" --> Data
+    User -- "Triggers Pipeline" --> CLI
+    CLI -- "Loads data" --> InputFS
+    CLI -- "Initializes" --> GP
+    GP -- "Passes T* Predictions" --> RSR
+    RSR -- "Passes Orthogonalized Z" --> MCMC
+    MCMC -- "Requests Adjacency Edge-List" --> PySAL
+    MCMC -- "Writes Posterior Results" --> OutputFS
 ```
-
-**C4 Legend:**
-*   **Purple (`#660099`)**: Primary Actors and Core Systems.
-*   **Gold/Yellow (`#FFCC33`)**: Internal Components and Local Storage.
-*   **Dark Grey (`#333333`)**: External Third-Party Library Dependencies.
 
 
