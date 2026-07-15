@@ -1,0 +1,33 @@
+# Data and outputs
+data/
+tests/fixtures/
+outputs/
+*.parquet
+*.nc
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.venv/
+.env
+.temp downloads/
+
+# OS
+.DS_Store
+
+# Exclude massive folders from Github packaging
+archive/
+journal_resources/
+literature/
+logs/
+scratch/
+papers/
+tasks/
+meta/
+
+.ignored/
+python-installer.exe
+scratch_scripts/

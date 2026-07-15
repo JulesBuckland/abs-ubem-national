@@ -1,0 +1,3 @@
+\contentsline {section}{\numberline {S1}Heat Loss Coefficient (HLC) Archetype Baselines}{1}{}%
+\contentsline {section}{\numberline {S2}Iterative Proportional Fitting (IPF) Constraints}{1}{}%
+\contentsline {section}{\numberline {S3}BYM2 Prior Specifications}{1}{}%

@@ -1,0 +1,17 @@
+pandas
+numpy
+scipy
+pymc
+pytensor
+arviz
+geopandas
+libpysal
+scikit-learn
+networkx
+matplotlib
+seaborn
+colorama
+tqdm
+psutil
+pandera
+pypandoc
