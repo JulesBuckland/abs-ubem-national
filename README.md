@@ -15,11 +15,12 @@ This repository is structured according to strict SOLID principles and the Gentz
 
 ```mermaid
 graph TD
-    classDef person fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff;
-    classDef system fill:#1168bd,stroke:#0b4884,stroke-width:2px,color:#fff;
-    classDef extSystem fill:#999999,stroke:#6b6b6b,stroke-width:2px,color:#fff;
-    classDef container fill:#438dd5,stroke:#2f6295,stroke-width:2px,color:#fff;
-    classDef database fill:#438dd5,stroke:#2f6295,stroke-width:2px,color:#fff;
+    %% University of Manchester Brand Theme - C4 Model
+    classDef person fill:#660099,color:#FFFFFF,stroke:#333333,stroke-width:2px;
+    classDef system fill:#660099,color:#FFFFFF,stroke:#FFCC33,stroke-width:3px;
+    classDef extSystem fill:#333333,color:#FFFFFF,stroke:#FFCC33,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef container fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:2px;
+    classDef database fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px;
 
     subgraph "System Context (Level 1)"
         User[Energy Researcher]:::person
@@ -31,9 +32,9 @@ graph TD
     ABSUBEM -- "Calculates Contiguity" --> PySAL
 
     subgraph "Container Diagram (Level 2)"
-        CLI[src/cli/run_inference.py\nRich CLI Entry Point]:::container
-        GP[Gaussian Process Emulator\nReplaces Power-Law Scaling]:::container
-        RSR[Restricted Spatial Regression\nOrthogonal Projection]:::container
+        CLI[CLI Orchestrator\nRich CLI Entry Point]:::container
+        GP[GP Emulator\nReplaces Power-Law Scaling]:::container
+        RSR[RSR Component\nOrthogonal Projection]:::container
         MCMC[PyMC NUTS Sampler\nSparse 1D ICAR Formulation]:::container
         Data[(Processed Data Store\nParquet / CSV)]:::database
     end
