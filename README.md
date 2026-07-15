@@ -30,24 +30,43 @@ graph TD
 Zooming into the ABS-UBEM software system to show its primary execution containers.
 
 ```mermaid
-graph TD
-    %% University of Manchester Colors
-    classDef person fill:#333333,color:#ffffff,stroke:#660099,stroke-width:3px
-    classDef app fill:#660099,color:#ffffff,stroke:#FFCC33,stroke-width:3px
-    classDef db fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
+---
+title: C4 Level 2 Container Diagram - ABS-UBEM Python CLI Architecture
+---
+flowchart TD
+    %% Styling - University of Manchester Brand Colors
+    classDef person fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
+    classDef container fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
+    classDef datastore fill:#333333,color:#ffffff,stroke:#FFCC33,stroke-width:2px
+    classDef boundary fill:none,color:#333333,stroke:#660099,stroke-width:2px,stroke-dasharray: 5 5
 
-    User(("Energy Researcher<br>[Person]<br><br>Configures, executes, and<br>evaluates ABS-UBEM models")):::person
-
-    subgraph ABS-UBEM ["ABS-UBEM Pipeline System"]
-        style ABS-UBEM fill:none,stroke:#333333,stroke-width:2px,stroke-dasharray: 5 5,color:#333333
-
-        App["ABS-UBEM Core App<br>[Container: Python 3 CLI]<br><br>Orchestrates spatial Bayesian simulation<br>steps and structural physics models."]:::app
-
-        DataStore[("Pipeline Data Store<br>[Container: Local File System]<br><br>Persists raw inputs (Census/Geodata)<br>and exports decoupled results (Parquet).")]:::db
+    %% Legend (Invisible nodes used for legend display)
+    subgraph Legend ["Legend"]
+        direction LR
+        L1["Person"]:::person
+        L2["Application Container"]:::container
+        L3["Data Store Container"]:::datastore
     end
-    
-    User -- "Configures & runs pipeline" --> App
-    App -- "Reads configs & inputs<br>Writes processed outputs" --> DataStore
+
+    %% Actors
+    User["👤 Energy Researcher<br/>[Person]<br/>Executes the inference pipeline and reviews posterior results"]:::person
+
+    %% System Boundary
+    subgraph ABS_UBEM ["ABS-UBEM Local Environment"]
+        direction TB
+        
+        CLI["⚙️ ABS-UBEM Inference CLI<br/>[Container: Python / PyMC / Rich]<br/>Orchestrates spatial matrix building, GP emulator predictions, and NUTS sampling"]:::container
+        
+        InputFS["📂 Input Data Store<br/>[Container: Local File System]<br/>Stores synthetic population (.parquet), GP emulator (.pkl), and Geo boundaries"]:::datastore
+        
+        OutputFS["💾 Output Data Store<br/>[Container: Local File System]<br/>Stores MCMC traces (.nc), decoupled energy metrics (.csv), and WAIC logs"]:::datastore
+    end
+    class ABS_UBEM boundary
+
+    %% Relationships
+    User -- "Runs inference and monitors dashboard via<br/>[Terminal/CLI]" --> CLI
+    CLI -- "Reads configuration, models, and spatial data from<br/>[File I/O]" --> InputFS
+    CLI -- "Writes posterior traces and T* results to<br/>[File I/O]" --> OutputFS
 ```
 
 ### Level 3: Component Diagram (ABS-UBEM Application)
