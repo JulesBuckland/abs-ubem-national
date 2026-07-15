@@ -20,8 +20,8 @@ graph TD
     classDef person fill:#660099,color:#FFFFFF,stroke:#333333,stroke-width:2px;
     classDef system fill:#660099,color:#FFFFFF,stroke:#FFCC33,stroke-width:3px;
 
-    User[Energy Researcher\n[Person]\nExecutes the reproducible pipeline]:::person
-    System[ABS-UBEM\n[Software System]\nNational-scale spatial Bayesian energy model]:::system
+    User["Energy Researcher<br/>[Person]<br/>Executes the reproducible pipeline"]:::person
+    System["ABS-UBEM<br/>[Software System]<br/>National-scale spatial Bayesian energy model"]:::system
     
     User -- "Configures and executes pipeline via CLI" --> System
 ```
@@ -37,14 +37,14 @@ graph TD
     classDef extLib fill:#333333,color:#FFFFFF,stroke:#FFCC33,stroke-width:2px,stroke-dasharray: 5 5;
 
     subgraph ABS-UBEM Application Boundary
-        CLI[CLI Orchestrator\n[Python / Rich]\nEntry point and progress management]:::component
-        GP[GP Emulator Component\n[Python / Scikit-Learn]\nReplaces slow archetype matching with O(1) surrogate]:::component
-        RSR[RSR Component\n[Python / NumPy]\nOrthogonally projects spatial effects away from Z-confounders]:::component
-        MCMC[Bayesian Inference Engine\n[Python / PyMC]\nExecutes Sparse 1D Queen-contiguity ICAR]:::component
-        Data[(Local File System\n[Parquet / CSV]\nStores synthetic populations and empirical targets)]:::database
+        CLI["CLI Orchestrator<br/>[Python / Rich]<br/>Entry point and progress management"]:::component
+        GP["GP Emulator Component<br/>[Python / Scikit-Learn]<br/>Replaces slow archetype matching with O(1) surrogate"]:::component
+        RSR["RSR Component<br/>[Python / NumPy]<br/>Orthogonally projects spatial effects away from Z-confounders"]:::component
+        MCMC["Bayesian Inference Engine<br/>[Python / PyMC]<br/>Executes Sparse 1D Queen-contiguity ICAR"]:::component
+        Data[("Local File System<br/>[Parquet / CSV]<br/>Stores synthetic populations and empirical targets")]:::database
     end
     
-    PySAL[GeoPandas / PySAL\n[External Library]\nBuilds the spatial adjacency matrix]:::extLib
+    PySAL["GeoPandas / PySAL<br/>[External Library]<br/>Builds the spatial adjacency matrix"]:::extLib
 
     CLI -- "Reads configuration and data" --> Data
     CLI -- "Triggers emulation" --> GP
