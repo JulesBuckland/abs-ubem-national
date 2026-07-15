@@ -26,6 +26,30 @@ graph TD
     User -- "Configures and executes pipeline via CLI" --> System
 ```
 
+### Level 2: Container Diagram
+Zooming into the ABS-UBEM software system to show its primary execution containers.
+
+```mermaid
+graph TD
+    %% University of Manchester Colors
+    classDef person fill:#333333,color:#ffffff,stroke:#660099,stroke-width:3px
+    classDef app fill:#660099,color:#ffffff,stroke:#FFCC33,stroke-width:3px
+    classDef db fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
+
+    User(("Energy Researcher<br>[Person]<br><br>Configures, executes, and<br>evaluates ABS-UBEM models")):::person
+
+    subgraph ABS-UBEM ["ABS-UBEM Pipeline System"]
+        style ABS-UBEM fill:none,stroke:#333333,stroke-width:2px,stroke-dasharray: 5 5,color:#333333
+
+        App["ABS-UBEM Core App<br>[Container: Python 3 CLI]<br><br>Orchestrates spatial Bayesian simulation<br>steps and structural physics models."]:::app
+
+        DataStore[("Pipeline Data Store<br>[Container: Local File System]<br><br>Persists raw inputs (Census/Geodata)<br>and exports decoupled results (Parquet).")]:::db
+    end
+    
+    User -- "Configures & runs pipeline" --> App
+    App -- "Reads configs & inputs<br>Writes processed outputs" --> DataStore
+```
+
 ### Level 3: Component Diagram (ABS-UBEM Application)
 Zooming inside the application runtime to show the Python logic modules handling the physics-to-spatial pipeline.
 
