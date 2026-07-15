@@ -1,0 +1,239 @@
+ID,Claim
+0,"Scalable Bayesian Computational Framework for Decoupling Building Physics from Socioeconomic Constraints at a National Scale Jules Buckland May 12, 2026 AbstractThis paper presents a scalable Bayesian hierarchical framework that uses the exact No-U-Turn Sampler (NUTS) to compute the Intrinsic Conditional Auto-Regressive (ICAR) prior across 6,837 Middle Layer Super Output Areas (MSOAs) in England."
+2,"By parameter- izing the ICAR component as a 1D sparse contigu- ous graph and employing Restricted Spatial Regression (RSR), our framework decouples the physical thermo- dynamic requirement of a building from the behav- ioral rationing of its occupants in a single pass."
+3,"Fusing the NEED 2024 dataset with multi-dimensional pop- ulation synthesis, the model successfully processes the national graph with a peak memory footprint of 3.1 GB RAM."
+4,"By restructuring the Restricted Spatial Regres- sion (RSR) projection into anO(N) algebraic scalar operation, the NUTS sampler converges on the full na- tional graph in under 30 minutes, completely bypassing intractableO(N2) dense matrix inversions."
+6,1 Introduction The decarbonization of the domestic building stock is a central pillar in national strategies to achieve Net Zero emissions.
+7,"In recent years, Urban Building Energy Modeling (UBEM) has emerged as a tool for forecast- ing carbon trajectories and assessing retrofit potentials at scale [4, 19]."
+8,"However, a well-documented discrep- ancy exists between the theoretical thermodynamic po- tential of the building stock and the actual empirical consumption observed in metered data [10, 15]."
+10,"In contexts of economic depri- vation, households are frequently forced to under-heat their homes to manage energy costs, a condition histor- ically analyzed through the lens of fuel poverty [1, 9]."
+11,"Consequently, deterministic models that rely on stan-dard thermal setpoints frequently over-predict energy consumption in low-income areas and under-predict it in high-income areas [27]."
+12,"To bridge the gap between building physics and metered data, researchers have increasingly turned to stochastic and hierarchical Bayesian frameworks [2, 18]."
+14,"Crucially, hierarchi- cal spatial Bayesian models can separate the variance attributable to the physical building from the variance attributable to socioeconomic constraints or spatial au- tocorrelation [16]."
+18,"We systematically separate physical housing conditions from socio-economic ra- tioning across 6,837 MSOAs in England."
+22,"1 2 Related Work Current UBEM frameworks, such as CityBES and UMI, have significantly advanced the capacity of ur- ban managers to predict carbon trajectories [4, 19]."
+25,2.1 Deterministic Urban Building Energy Models The core of modern UBEM relies on scaling individ- ual building energy models to the urban level.
+28,"Recent critiques [27] have highlighted the limita- tions of relying on static profiles, which consistently over-predict energy consumption in low-income pop- ulations and under-predict it in high-income popula- tions."
+30,"2.2 Spatial Stock Estimation To bridge the gap between building physics and de- mographic reality, researchers have turned to spatial stock estimation, using techniques like Deterministic IMD-Iterative Proportional Fitting (IPF) to generate synthetic populations [16]."
+32,"2.3 Bayesian Approaches to Energy Mod- eling Bayesian inference offers a principled approach to integrating deterministic physics with stochastic be- havioral data [2, 18]."
+36,2.4 Methodological Positioning and INLA This research is explicitly positioned as an extension of the methodological framework established by [16].
+39,"Our contribution builds directly upon this predecessor by applying the approach to the national housing stock of England—encompassing 6,837 MSOAs and 684,000 households."
+41,"This methodological refine- ment is critical for the UK context, where the “pre- bound effect” [25] — the systematic gap between the- oretical energy predictions and actual measured con- sumption — is heavily mediated by affordability con- straints, requiring a more rigorous characterization of structural building performance than aggregate me- tered data alone can provide."
+42,"Traditionally, the gold standard for evaluating large- scale Latent Gaussian Models with spatial ICAR pri- ors is the Integrated Nested Laplace Approximation (INLA) [21]."
+43,"INLA natively handles sparse preci- sion matrices, scales effectively to national geometries, and provides highly accurate approximations of pos- terior marginals that capture spatial dependency far better than mean-field variational inference [23]."
+46,"However, by restructuring the spatial confound- ing projection into anO(N) algebraic scalar operation, we achieve full-graph NUTS convergence in under 30 minutes, enabling rapid national-scale iteration within a unified PyMC-based probabilistic programming en- vironment without sacrificing exact posterior accuracy."
+47,"3 Methodology The framework handles multi-level uncertainty in building stock composition, physical parameters, and behavioral response to economic shocks."
+48,The overall system architecture follows a linear pipeline designed for scalability (see Figure 1).
+49,"2 Figure 1: System architecture flowchart illustrating the transition of data scales: from the 50,000-household NEED seed, through Multi-Dimensional IPF (Property, Age, Tenure, IMD) and expansion to 684,000 house- holds, followed by MSOA-level aggregation to 6,837 neighborhoods for Bayesian spatial inference (3 MSOAs excluded due to Census data gaps)."
+50,"3.1 Population Synthesis and System Ar- chitecture The data integration pipeline follows a modular archi- tecture: 1.Administrative Microdata Ingestion:50,000 official anonymized records from theNEED 2024 Anonymised Dataset(empirical seed)."
+53,"2.Multi-Dimensional Iterative Proportional Fitting (IPF):To accurately represent the physical and socioeconomic variance within each MSOA, we utilize multi-dimensional IPF."
+54,"The synthetic population is constrained across four in- tersecting matrices—Property Type (House, Flat, Bungalow), Age Band (Pre-1900 to 2007+), Tenure (Owned, Social Rented, Private Rented),and IMD (Deciles 1–10)—ensuring the localized structural stock matches Census 2021 marginals."
+55,"We implement theTruncate, Replicate, Sam- ple (TRS)integerisation method [24] to handle the transition from floating-point weights to dis- crete households."
+56,3.Archetype Assignment:Mapping of synthetic households to physical UBEM archetypes.
+58,The Heat Loss Coefficient (HLC) for each synthetic household is derived from 32 phys- ical archetypes (Table 1).
+59,4.Bayesian Inference:Hierarchical spatial mod- eling to decouple physical and behavioral signals [16].
+60,5.Performance Estimation:Derivation of the fi- nal empirically-derived performance metrics [17].
+61,3 Table 1: Full physical parameters for the 32 national building archetypes.
+62,Derived from NEED 2024 and calibrated using EnergyPlus simulations following Cerezo et al.
+63,(2017) [3].
+64,Age Band Property Type Area (m2) Intensity (kWh/m2) HLC (W/K) Source 1900-1929 Bungalow 97.2 230.0 465.8 NEED 2024 / Cerezo 1900-1929 Flat 52.8 230.0 253.0 NEED 2024 / Cerezo 1900-1929 House 91.6 230.0 438.9 NEED 2024 / Cerezo 1900-1929 Maisonette 75.6 230.0 362.2 NEED 2024 / Cerezo 1930-1949 Bungalow 71.8 210.0 314.1 NEED 2024 / Cerezo 1930-1949 Flat 56.6 210.0 247.6 NEED 2024 / Cerezo 1930-1949 House 89.3 210.0 390.7 NEED 2024 / Cerezo 1930-1949 Maisonette 64.2 210.0 280.9 NEED 2024 / Cerezo 1950-1966 Bungalow 70.9 180.0 265.9 NEED 2024 / Cerezo 1950-1966 Flat 55.1 180.0 206.6 NEED 2024 / Cerezo 1950-1966 House 86.5 180.0 324.4 NEED 2024 / Cerezo 1950-1966 Maisonette 65.8 180.0 246.8 NEED 2024 / Cerezo 1967-1982 Bungalow 73.5 150.0 229.7 NEED 2024 / Cerezo 1967-1982 Flat 51.3 150.0 160.3 NEED 2024 / Cerezo 1967-1982 House 90.5 150.0 282.8 NEED 2024 / Cerezo 1967-1982 Maisonette 64.2 150.0 200.6 NEED 2024 / Cerezo 1983-1995 Bungalow 66.0 130.0 178.8 NEED 2024 / Cerezo 1983-1995 Flat 49.4 130.0 133.8 NEED 2024 / Cerezo 1983-1995 House 90.8 130.0 245.9 NEED 2024 / Cerezo 1983-1995 Maisonette 61.1 130.0 165.5 NEED 2024 / Cerezo 1996-2006 Bungalow 70.8 110.0 162.2 NEED 2024 / Cerezo 1996-2006 Flat 60.5 110.0 138.6 NEED 2024 / Cerezo 1996-2006 House 97.8 110.0 224.1 NEED 2024 / Cerezo 1996-2006 Maisonette 78.8 110.0 180.6 NEED 2024 / Cerezo 2007+ Bungalow 78.4 90.0 147.0 NEED 2024 / Cerezo 2007+ Flat 58.5 90.0 109.7 NEED 2024 / Cerezo 2007+ House 102.6 90.0 192.4 NEED 2024 / Cerezo 2007+ Maisonette 81.9 90.0 153.6 NEED 2024 / Cerezo Pre-1900 Bungalow 101.5 250.0 528.6 NEED 2024 / Cerezo Pre-1900 Flat 59.6 250.0 310.4 NEED 2024 / Cerezo Pre-1900 House 106.3 250.0 553.6 NEED 2024 / Cerezo Pre-1900 Maisonette 95.8 250.0 499.0 NEED 2024 / Cerezo 3.2 Physics Baseline and Archetype As- signment Logic Each synthetic household is assigned a theoretical en- ergy requirement (T h) derived from a baseline build- ing physics model.
+65,"We implemented an explicit map- ping logic between the synthesized housing stock and 32 standardized UK building archetypes ([3]), with the full parameters detailed in Table 1."
+68,"The household-level theoretical thermal energy re- quirementT h(kWh/year) is computed via a 5- dimensional Gaussian Process (GP) emulator trained onN= 9,600 EnergyPlus simulations."
+69,"The simula- tion design is generated by Latin Hypercube Sampling(LHS) over five physical input dimensions for each of the 32 national archetypes: floor areaS h, external wall U-valueU w,h, air change raten ACH,h , window-to-wall ratioψ h, and localized Heating Degree Days (HDD)."
+70,"The LHS design spans±30% of each age-band and form-band nominal value, ensuring full coverage of the within-archetype population variance captured during Phase 1 synthesis."
+72,"First, to eliminate geographic orientation bias, each archetype is simulated across four cardinal orientations (North, East, South, West) and the resulting thermal demand is averaged in accordance with CIBSE TM54 guidelines."
+73,"Second, to prevent the overestimation of 4 metabolic heat gains in large properties, the number of occupants is dynamically assigned using the asymp- totic occupancy curve defined in SAP 2012 Section 4.2."
+74,"Finally, all dwellings are constrained to the standard- ized SAP 10.2 heating schedule (9 hours on weekdays, 16 hours on weekends at 21◦C)."
+75,"By enforcing these rigid physical and operational parameters within En- ergyPlus v25.2, we decouple the true structural vari- ance from local behavioral noise."
+77,"The GP emulator uses a Mat´ ern (ν= 2.5) kernel and a White noise term to absorb EnergyPlus roundtrip discretisation noise: Th=fGP  Sh, Uw,h, nACH,h , ψh ±σGP h (1) whereσGP his the GP predictive standard deviation."
+80,"The emula- tor achieves a held-out predictiveR2>0.99 on 50 re- served EnergyPlus runs per archetype family, confirm- ing near-exact interpolation of the simulated response surface."
+82,3.3 Bayesian Hierarchical Specification The core computational model characterizes physi- cal energy signals from socioeconomic noise.
+83,"We employ a hierarchical model with an Intrinsic Con- ditional Auto-Regressive (ICAR) prior to capture spatial autocorrelation, building upon the founda- tional Bayesian calibration framework established by Kennedy and O’Hagan [12] and its subsequent refine- ments for macro-to-micro urban energy calibration [2]."
+85,"To handle the structural dis- crepancy between the deterministic physics baseline and empirical observations, we utilize a model discrep- ancy function inspired by the multi-level frameworks of [16], ensuring that calibration parameters remain iden- tifiable even in the presence of unmodeled behavioral noise."
+86,"We model log-consumption as a function of the physical baseline, deprivation, and localized random effects: ym∼Normal(µ m, σ2 y) µm= log(T m) +β th+βincZinc,m +θm+ϕmWhereT mrepresents the intrinsic structural require- ment derived from building physics, aggregated as the arithmetic mean of synthetic household requirements Tm=1 HmPHm h=1Tm,h."
+91,"3.4 Bayesian Priors and Mathematical Jus- tification To ensure robust parameter estimation and prevent overfitting in a highly parameterized spatial model, we employ weakly informative priors tailored to the ex- pected scale of the effects."
+92,"While this multi-level for- mulation is highly advantageous for predictive decou- pling and characterizing structural signals, the recov- ered group-level coefficients represent associative spa- tial elasticity rather than isolated causal effects [7]."
+93,1.
+95,"We apply a strongly informative prior derived from longitudinal studies of the UK ‘perfor- mance gap’ which indicate that SAP-based theoretical models consistently over-predict actual demand by ap- proximately 30% [26, 5]:β th∼Normal(−0.3,0.1) 2."
+97,"We use a weakly informative Normal prior: βinc∼Normal(0,0.5) 3."
+98,"Spatial Autocorrelation (ϕ mandθ m): We utilize a BYM2 (Besag-York-Mollie) specification ([20]), where the random effect is decomposed into a spatially structured component (ϕ m) and an un- structured component (θ m)."
+100,"We specify the standard BYM2 hyperpriors for the spatial mixing parameter ρ∼Beta(0.5,0.5) and the total random effect stan- dard deviationσ total∼HalfNormal(1.0), ensuring an uninformative prior on the spatial scale while regular- izing the total neighborhood variance."
+101,"To ensure ab- 5 solute model identifiability and prevent Hodges-Reich confounding (where the spatial intercept absorbs the global intercept), we explicitly enforce a strict sum- to-zero constraint across all nodes for the spatial field (Pϕm= 0) using a PyMC Potential."
+102,"ϕ∼Normal(0,Σ) (2) WhereQ= Σ−1is the precision matrix proportional to the graph LaplacianL=D−W, withDthe diagonal degree matrix andWthe adjacency matrix."
+103,3.5 Hardware and Computational Opti- mization Executing this model efficiently at the national scale required a fundamental departure from dense matrix operations.
+104,"The entire inference pipeline was executed on a standard research workstation (32GB RAM ca- pacity), yet required a fraction of that limit due to mathematical optimization."
+107,"By compressing the 6,837-node precision matrix into 19,439 1D inte- ger edge arrays, the global adjacency structure is re- duced to less than 50MB."
+109,"Full exact MCMC (e.g., NUTS) on a 6,837-node spa- tial ICAR graph is computationally prohibitive with- out access to high-performance computing infrastruc- ture, as observed NUTS runtimes on ourN= 200 sub- graphs extrapolate to several days of wall-clock time at national scale."
+116,"We analytically resolve this conflict by modifying the PyMC likelihood function with a second-order variance correction: log(y m)∼ Normal log(T m)−σ2 T,m 2, ."
+118,". , whereσ2 T,mis the em- pirical within-MSOA variance ofT m,hacross synthetic households."
+121,The ini- tialization and data ingestion required just 411.39 MB.
+122,"Building the full national spatial graph and calculat- ing the RSR orthogonal projection matrices peaked at exactly 1,192.03 MB (1.19 GB)."
+123,"The ability to perform Bayesian inference on a fully coupled national spatial network using barely 3.1 GB of RAM enables national- scale Urban Building Energy Modeling, removing the need for supercomputing clusters."
+124,"Data Gaps and MSOA Exclusion:While the national confounder set encompasses 6,840 English MSOAs, three specific neighborhoods (Lewisham 025, Leicester 001, and Reigate and Banstead 013) were systematically excluded from the final Bayesian in- ference."
+125,"This exclusion was necessitated by explicit data gaps in the Census 2021 TS044 (Accommodation Type) marginals, which prevented the Iterative Pro- portional Fitting (IPF) algorithm from synthesizing valid property-type distributions for these specific ar- eas."
+126,"Consequently, the final computational execution and subsequent spatial mapping reflect 6,837 MSOAs."
+127,3.6 Behaviorally-Adjusted Thermal Esti- mation The final behaviorally-adjusted metric (T∗) isolates the unobserved structural variance of the building stock from localized behavioral rationing.
+128,"We redefine T∗for an MSOAmusing Partial Residualization: T∗ m= exp"" log(y m)−ˆβincZinc,m +σ2 err,m 2# (3) Wherey mis the mean observed Total Deliv- ered Thermal Energy (combining gas and weather- dependent electricity) for MSOAm(kWh/year), and 6 ˆβincZinc,m is the predicted behavioral rationing effect for the neighborhood’s deprivation level."
+134,4 Data Handling and Anonymiza- tion The utilization of administrative energy micro-data ne- cessitates a rigorous technical framework to prevent the re-identification of individual households.
+138,"5 Results and Analysis 5.1 Computational Validation and Model Comparison The model achieved high computational stability across all 6,837 MSOAs."
+140,"Convergence diagnostics for theNUTS sampler showed highly stable Markov chains, with ˆR <1.05 across all major spatial coefficients for the entire country simultaneously."
+141,"By fitting the en- tire spatial hierarchy in a single contiguous block with a peak memory footprint of 3.1 GB, the framework ensures absolute global mathematical consistency."
+143,"To justify the inclusion of the deterministic physics prior, we performed a formal model comparison on a representative national pilot subset (500 MSOAs)."
+145,"As shown in Table 2 (Sec- tion 5.1), while both models successfully capture so- cioeconomic trends, Model A provides a significantly more robust characterization of the structural base- line, with the physics prior successfully anchoring the estimates in thermodynamic reality."
+146,"Model A outper- formed the pure socioeconomic baseline (Model B) by a ∆elpd-WAICof 88.8 (SE = 23.0), as shown in Ta- ble 2."
+147,"Thep WAICvalues of 3.66 and 4.69 are im- plausibly small for a model of this complexity, and re- flect ADVI’s known tendency to underestimate poste- rior variance, which artificially collapses the effective parameter count."
+149,"However, with ∆elpd = 88.8 (SE = 23.0, itself derived from ADVI posterior samples and therefore also subject to underestimation) — a near four-sigma difference — the direction of the com- parison is robust: even a substantial upward correction for ADVI-collapsed variance is unlikely to reverse the conclusion that Model A provides substantially better predictive density than Model B."
+151,"Global MCMC Convergence:The full NUTS sampler successfully evaluated the entire 6,837-node structure simultaneously, avoiding the artificial bound- ary distortions introduced by regional sub-graphing."
+152,"The recovered rationing elasticity (β inc=−0.028, 95% CI: [−0.038,−0.018]) serves as a critical verification of the model specification; the negative sign confirms that, as deprivation increases, empirical consumption falls below the physics-based expectation, formalizing the ’rationing’ signal that our framework characterizes."
+153,7 Model elpd WAIC p WAIC d WAIC (SE) Model A (Physics) 318.9 4.69 0.0 (—) Model B (No Physics) 230.1 3.66 88.8 (23.0) Table 2: Bayesian Model Comparison (WAIC).
+155,"5.2 National Distribution of Structural Performance The Bayesian inference recovers a global physics bias ofβ th=−0.613 (95% CI: [−0.621,−0.605]) and an income-rationing elasticity ofβ inc=−0.028 (95% CI: [−0.038,−0.018])."
+156,"Across the national scale, the pos- terior standard deviations for the spatial (ϕ m) and unstructured (θ m) random effects remained tightly bounded (mean SD = 0.203, range = 0.089 to 0.247), confirming the stability of the ICAR prior."
+157,"The adjusted metric provides a high-resolution, behaviorally-adjusted map of the housing stock effi- ciency across England (see Figure 2)."
+158,"To quantify the reliability of these estimates, we provide a map of Bayesian uncertainty (posterior standard deviation) across the study area (see Figure 3)."
+160,"The national mean for the behaviorally-adjusted thermal requirement (T∗) is recovered at11,091 kWh/year, with a standard deviation of 1,308 kWh."
+162,"Analysis of the distribution reveals a stable in- terquartile range (IQR) across IMD deciles (mean IQR = 1,333 kWh)."
+164,"Crucially, the 90th percentile forT∗is identi- fied at12,852.80 kWh/year."
+165,"However, our analysis shows that only0.14%of the total national housing stock (representing approximately 1,000 households) satisfy the joint probability condition of being in the top decile of thermal requirement while being located in the most deprived IMD deciles (1 and 2)."
+167,"For an average home withT∗= 11,091 kWh/year, assuming 2,000 Heat- ing Degree Days (HDD), the implied HLC is approx- imately231 W/K."
+168,"For a standard 80m²home, this corresponds to a Heat Loss Parameter (HLP) of 2.89 W/m²K."
+170,5.3 Regional Disparities and the North- South Building Stock Divide The Bayesian results reveal a profound regional divide in structural thermal performance that maps closely to the industrial history of the United Kingdom.
+171,"The av- erage behaviorally-adjusted requirement in theNorth West(11,120.62 kWh/year) andYorkshire and The Humber(11,302.40 kWh/year) is significantly higher than the average forLondon(9,712.08 kWh/year)."
+172,This 14% ’structural gap’ between the North and the Capital remains persistent even after controlling for lo- calized income deprivation and weather-driven degree- day variances.
+174,"The Northern city- regions (Manchester, Liverpool, Sheffield) are charac- terized by a high density of solid-wall terraced hous- ing constructed between 1880 and 1930."
+179,"By providing these regional benchmarks, our frame- work allows the Department for Energy Security and Net Zero (DESNZ) to re-evaluate national retrofit quo- tas, which are currently heavily weighted toward abso- lute population counts rather than regional structural 8 Figure 2: National distribution ofT∗."
+180,Figure 3: Bayesian Uncertainty (SD).
+181,Figure 4: Structural-Economic Interaction.
+182,Figure 5: Spatial Residuals (Rationing).
+183,Figure 6: Prior vs.
+185,9 deficit.
+186,5.4 Intersection of Building Age and Form A detailed examination of the relationship betweenT∗ and administrative property data characterizes neigh- borhoods where the built form creates an architectural ceiling on efficiency (see Figure 4).
+187,MSOAs withT∗ values in the top 5th percentile are almost exclusively characterized by ’Inter-war Semi-Detached’ and ’Pre- 1919 Terraced’ archetypes.
+194,"5.5 Micro-scale Comparative Case Studies: Hampstead, Birmingham, and Oldham To demonstrate the decoupling power of the frame- work, we examine three divergent MSOAs:Hamp- stead Town,Birmingham 044(Ladywood), and Oldham 014."
+195,"InHampstead Town (Camden 004), the theo- retical baselineT his estimated at 14,800 kWh/year."
+197,"However, the observed mean gas consumptiony mis 39,220 kWh/year, yield- ing an empirical consumption ratio of 2.65."
+199,"InBirmingham 044, a transitionary urban neigh- borhood, the theoretical baseline is 16,400 kWh/year."
+201,The recovered ratio of 0.88 suggests a persistent 12% under-heating gap.
+203,"Conversely, inOldham 014, a highly deprived neighborhood, the theoretical baseline is 20,450kWh/year—driven by a stock of solid-wall pre-1919 terraced housing."
+204,"Here, the observed mean consump- tion is only 11,200 kWh/year, a ratio of just 0.54."
+205,This characterizes a severe performance gap where house- holds are consuming 46% less energy than the mod- elled thermodynamic baseline for archetype-standard operating conditions.
+207,The 66% difference between the physical requirement and empirical consumption in Oldham (compared to the 265% over-heating in Hampstead) quantifies the mag- nitude of the behavioral decoupling achieved by the framework.
+208,"5.6 Spatial Distribution of Rationing Elas- ticity (β inc) Beyond mapping structural efficiency, our model en- ables an analysis of how rationing elasticity varies geographically."
+209,"While the global coefficient (β inc= −0.028) confirms the trend of deprivation-driven under-heating, consistent with the spatial clustering visible in Figure 2 and the interactions identified in Figure 4, localized effects suggest acute rationing in peri-urban areas on the fringes of city-regions."
+211,"5.7 Computational Stability and Internal Validation To ensure that the recovered behaviorally-adjusted es- timates are grounded in physical reality rather than model artifacts, we conducted internal consistency checks and sensitivity analyses."
+212,"Prior Sensitivity Check:Given the use of an informative prior on the global physics bias (β th∼ Normal(−0.3,0.1)), we tested the model’s sensitivity by substituting it with a weakly informative alterna- tive (Normal(0,0.5))."
+214,"To ensure method- ological transparency and rapid iteration, this sensi- tivity analysis was conducted on the Greater Manch- ester spatial subset (353 MSOAs), utilizing the identi- cal BYM2 architecture employed in the national run."
+217,The significant shift inβ th from the prior mean of -0.3 to the posterior mean of 10 -0.613 (visualized in Figure 6) is justified by the data- driven predictive calibration; prior predictive checks confirmed that the SAP-based theoretical baseline sys- tematically over-predicts consumption.
+218,"Specifically, the prior predictive mean residual stood at-0.2903, indicating severe miscalibration."
+219,"Following Bayesian updating, the posterior mean residual improved dra- matically to0.0227, confirming this empirical correc- tion successfully aligns the structural estimates with observed metered data."
+220,"5.8 Health and Economic Convergent Va- lidity To establish the external relevance of the behaviorally- adjusted metric, we performed a Local Authority (LA) level correlation analysis between the meanT∗and ONS Excess Winter Deaths (EWD) data, alongside a regional correlation against independent energy expen- diture data from the actual UK Household Longitudi- nal Study (UKHLS) Wave 13."
+221,"The analysis identifies a statistically significant positive correlation between structural thermal deficiency and winter mortality vul- nerability (r= 0.16, p <0.05 at LAD scale), consis- tent with the determinants of health identified by [28]."
+222,"While the effect size is modest (r2= 0.026), reflecting the multi-causal complexity of winter mortality at the district scale, the positive direction is consistent with the expected structural-thermal pathway and warrants further investigation with linked household-level data."
+223,"Furthermore, the regional analysis yielded an appar- ently large negative correlation (r=−0.6667) between T∗and UKHLS mean annual gas expenditure."
+224,"While this result is marginally non-significant (p= 0.071) due to the small number of regional aggregate degrees of freedom, the high effect size provides suggestive pre- liminary evidence for the behavioral rationing char- acterized by the model, though the small number of regional aggregate observations (n= 9) limits the in- terpretability of this finding: regions with the highest structural inefficiency exhibit significantly lower abso- lute metered spend, confirming that physical deficiency leads to acute energy rationing rather than increased expenditure in the absence of affordability."
+225,"6 Limitations While the framework achieves massive spatial scalabil- ity, we explicitly acknowledge several theoretical limi- tations stemming from partial residualization."
+229,"(2018) [29], the mean-field approx-imation converges to a saddle point of the Evidence Lower Bound that systematically underestimates pos- terior variance and may bias the posterior means of highly correlated spatial random effects."
+230,"OurN= 200 subgraph validation is insufficient to guarantee unbi- ased estimation on the full 6,837-node graph because severing the adjacency ties of boundary nodes funda- mentally changes the effective ICAR prior on the sub- graph."
+233,"Unmodeled spatially structured covariates (e.g., housing density, regional unemployment, heat- ing system type prevalence) are not removed by the RSR projection and will continue to induce confound- ing [8]."
+236,"7 Computational Benchmarking To evaluate engineering performance, we benchmarked the execution across spatial scales (see Table 4)."
+239,"8 Discussion and Future Directions 8.1 Policy Implications and Smart City In- tegration Our findings map directly to the three core components of energy justice identified by Walker and Day (2012): Distributional Justice, through the identification of the structural North-South thermal divide; Recognition Justice, by exposing the ‘hidden cold’ in neighborhoods invisible to traditional EPC metrics; and Procedural Justice, by providing an empirical, behavior-agnostic metric that can anchor transparent infrastructure pri- oritization frameworks."
+241,This met- 11 Parameter Informative Prior Weak Prior βth(Physics Bias) -0.613 (0.004) -0.615 (0.005) βinc(Rationing) -0.028 (0.005) -0.031 (0.005) Table 3: Posterior mean (SD) comparison for prior sensitivity analysis.
+242,"Pipeline Stage Input Size Runtime (s) Peak RAM (GB) Iterative Proportional Fitting (IPF) 50k Seed→6,840 MSOAs 371 1.48 Bayesian Inference 6,837 MSOAs 5,100 3.1 Performance Mapping 684,000 HH 112 0.6 Table 4: Computational benchmarking results across pipeline stages using official national datasets."
+248,"[17], even financially viable retrofits frequently fail to achieve uptake due to a lack of recognized physical need among residents and a lack of tailored outreach."
+251,[14] demon- strate that the mental health impacts of cold and damp homes—driven by financial strain and social stigma— are often more consistent and measurable than physi- cal health gains.
+256,"[22]demonstrated a ‘Ventilation Paradox’ where energy ef- ficiency improvements in low-income dwellings were as- sociated with an increased risk of hospital admissions for asthma and COPD, likely due to reduced air ex- change and increased indoor moisture/pollutant accu- mulation."
+258,"8.2 Limitations and Adversarial Defense The behaviorally-adjusted thermal requirement (T∗) represents a significant methodological step in behaviorally-adjusted building stock characterization; however, its interpretation must be grounded in several structural and statistical limitations."
+259,1.
+263,2.
+267,Future 12 work utilizing LSOA-level (Lower Layer Super Output Area) data or household-level deprivation indicators could refine this decoupling.
+268,3.
+270,"Sensitivity testing across the GP input space confirms that the nationalT∗distribution is ro- bust to within-archetype physical parameter variation, with the aggregate standard deviation shifting by less than1.5%across the full±30% LHS input range."
+271,"The reliance on a 50,000-household administrative seed for national-scale expansion introduces known sampling variance."
+272,"Our synthesis variance quantification indi- cates an87.9% variance lossduring the transition from the household-level seed (variance = 20,250,000) to the aggregated MSOA synthetic means (variance = 2,445,344)."
+274,4.
+279,5.
+280,"Prior Circularity and Global Bias:The use of a strongly informative prior for the global physics bias (β th∼Normal(−0.3,0.1)) anchors the model to the existing “performance gap” literature."
+283,6.
+286,"To resolve this, we propose integrating T∗into a formal Multi-Criteria Decision Framework (MCDF): Priority Rankm=w 1·Z(T∗ m) +w 2·Z(IMD m) (4) whereZ(·) denotes standard normalization."
+287,"By as- signing illustrative weights (e.g.,w 1= 0.6,w 2= 0.4), policymakers can explicitly balance physical structural failure against socioeconomic vulnerability."
+289,7.
+290,"Gas-Only Focus and Total Energy Imbal- ance:The current iteration of the framework utilizes metered gas consumption as the primary empirical an- chor, as gas remains the dominant heating fuel for ap- proximately 85% of the national housing stock."
+294,"8.3 Future Work: High-Frequency Data and Temporal Dynamics Future work will aim to ingest high-frequency, real- time smart meter data via distributed streaming plat- forms (e.g., Apache Kafka)."
+297,8.4 Privacy-Preserving Computation in Smart Cities High-resolution metered data poses re-identification risks.
+298,Our Bayesian architecture mitigates this by ag- 13 gregating outputs to the MSOA level.
+301,9 Conclusion This research introduces a scalable Bayesian frame- work decoupling physical building energy signals from economic behavior at the national scale.
+302,"By utiliz- ing a sparse unchunked national graph representation with variational inference, we demonstrate that high- resolution hierarchical spatial modeling is computa- tionally feasible across 6,837 MSOAs using standard research hardware."
+308,The authors would like to thank the De- partment for Energy Security and Net Zero (DESNZ) for providing access to the NEED 2024 anonymised dataset.
+309,10 Data and Code Availability The National Energy Efficiency Data-Framework (NEED) 2024 anonymised microdata used in this study is securely held by the Department for Energy Secu- rity and Net Zero (DESNZ).
+312,References [1] B.
+314,"Belhaven Press, London, 1991."
+315,[2] A.
+322,"Journal of Building Performance Simulation, 6 (4):293–318, 2013."
+323,doi: 10.1080/19401493.2012.
+324,723750.
+325,[3] C.
+329,"Urban Building Energy Modeling (UBEM) archetype clustering.Energy and Buildings, 147:1–15, 2017."
+330,doi: 10.1016/j.enbuild.2017.04.041.
+331,[4] Y.
+336,"Citybes: A web-based platform for city-scale building energy efficiency modeling.Energy and Buildings, 142: 120–134, 2017."
+337,[5] DECC.
+339,"Technical report, Department of Energy and Cli- mate Change, London, UK, 2013."
+340,[6] M.
+342,"Archi- tectural Press, London, 1980."
+343,[7] A.
+345,"Prior distributions for variance pa- rameters in hierarchical models.Bayesian Analy- sis, 1(3):515–534, 2006."
+346,doi: 10.1214/06-BA117R.
+347,[8] E.
+356,"Restricted spatial regression in practice: geostatistical models, confounding, and robustness under model misspecification.Envi- ronmetrics, 26(4):243–254, 2015."
+357,[9] J.
+360,"Technical report, CASE, 2012."
+361,[10] S.
+368,"A field study of thermal comfort in low-income dwellings in england before 14 and after energy efficient refurbishment.Build- ing and Environment, 44(6):1228–1236, 2009."
+369,doi: 10.1016/j.buildenv.2008.09.006.
+370,[11] ISO.
+372,"Technical Report ISO 13789:2017, International Organization for Stan- dardization, 2017."
+373,[12] M.
+377,"Bayesian cal- ibration of computer models.Journal of the Royal Statistical Society: Series B (Statistical Methodology), 63(3):425–464, 2001."
+378,doi: 10.1111/ 1467-9868.00294.
+379,[13] A.
+386,"Automatic differentiation variational inference.Journal of Machine Learn- ing Research, 18(1):430–474, 2017."
+387,[14] C.
+390,"Fuel poverty and hu- man health: A review.Energy Policy, 38(6):2987– 2997, 2010."
+391,doi: 10.1016/j.enpol.2010.01.037.
+392,[15] L.
+397,"Technical report, California Institute for En- ergy and Environment (CIEE), Oakland, CA, 2009."
+399,[16] A.
+404,"A stock estimation of spatial inequality in energy access: A Bayesian multi-level modelling approach for urban India.Environment and Plan- ning B: Urban Analytics and City Science, 50(4): 895–910, 2021."
+405,doi: 10.1177/23998083211073140.
+406,[17] T.
+411,"Census-based urban building energy mod- eling: Validity and adoption barriers.Energy and Buildings, 291:113110, 2023."
+412,doi: 10.1016/ j.enbuild.2023.113110.
+413,[18] G.
+421,"Devel- opment of a Bayesian calibration framework for archetype-based housing stock models of summer indoor temperature.Journal of Building Perfor- mance Simulation, 18(5-6):687–706, 2025."
+422,doi: 10.1080/19401493.2024.2421330.
+423,[19] C.
+428,"Urban building energy modeling - a review.Energy and Buildings, 117:146–154, 2016.[20] A."
+434,"An intuitive Bayesian model for quadratic forms that allows for prior propagation.Statistical Science, 31(1):114–132, 2016."
+435,doi: 10.1214/ 15-STS531.
+436,[21] H.
+441,"Journal of the Royal Statistical Society: Series B (Statistical Methodology), 71(2):319–392, 2009."
+442,doi: 10.1111/j.1467-9868.2008.00700.x.
+443,[22] R.
+459,"Environmental Research, 172:12–24, 2019."
+460,[23] D.
+468,"Penalising model component complexity: A principled, practical approach to constructing priors.Statistical Science, 32(1):1– 28, 2017."
+469,[24] A.
+471,"Population synthesis for static and dynamic microsimulation.Transportation Re- search Record, 2668(1):12–21, 2017."
+472,[25] M.
+475,"Introducing the prebound effect: the gap between performance and actual energy consumption.Building Re- search & Information, 40(3):260–273, 2012."
+476,[26] S.
+478,"PhD thesis, University of Cambridge, 2022."
+479,[27] R.
+487,"A data-centric bottom-up model for gen- eration of stochastic internal load profiles based on space-use type.Journal of Building Per- formance Simulation, 12(3):311–337, 2019."
+488,doi: 10.1080/19401493.2019.1583287.
+489,[28] P.
+495,"Fletcher.Cold comfort: the social and environmental determi- nants of excess winter death in England, 1986- 1996."
+496,"Joseph Rowntree Foundation, 2001."
+497,[29] Y.
+504,"InInternational Conference on Machine Learning, pages 5581–5590."
+505,"PMLR, 2018."
+506,15
