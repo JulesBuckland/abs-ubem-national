@@ -11,41 +11,53 @@ python -m src.cli.run_inference
 ```
 
 ## System Architecture (C4 Model)
-This repository is structured according to strict SOLID principles and the Gentzkow & Shapiro guidelines for reproducibility. Below is the C4 architecture mapping the flow of data through the Bayesian components.
+### Level 1: System Context Diagram
+A high-level view showing the user interaction with the ABS-UBEM software boundary.
 
 ```mermaid
 graph TD
-    %% University of Manchester Brand Theme - C4 Model
+    %% University of Manchester Brand Theme
     classDef person fill:#660099,color:#FFFFFF,stroke:#333333,stroke-width:2px;
     classDef system fill:#660099,color:#FFFFFF,stroke:#FFCC33,stroke-width:3px;
-    classDef extSystem fill:#333333,color:#FFFFFF,stroke:#FFCC33,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef container fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:2px;
-    classDef database fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px;
 
-    subgraph "System Context (Level 1)"
-        User[Energy Researcher]:::person
-        ABSUBEM[ABS-UBEM Platform]:::system
-        PySAL[PySAL/GeoPandas\nSpatial Boundary Engine]:::extSystem
-    end
-
-    User -- "Executes CLI Pipeline" --> ABSUBEM
-    ABSUBEM -- "Calculates Contiguity" --> PySAL
-
-    subgraph "Container Diagram (Level 2)"
-        CLI[CLI Orchestrator\nRich CLI Entry Point]:::container
-        GP[GP Emulator\nReplaces Power-Law Scaling]:::container
-        RSR[RSR Component\nOrthogonal Projection]:::container
-        MCMC[PyMC NUTS Sampler\nSparse 1D ICAR Formulation]:::container
-        Data[(Processed Data Store\nParquet / CSV)]:::database
-    end
-
-    ABSUBEM -. "Decomposes into" .-> CLI
-    CLI -- "Loads Population" --> Data
-    CLI -- "Triggers" --> GP
-    GP -- "T* Predictions" --> RSR
-    RSR -- "Orthogonal Z-Confounders" --> MCMC
-    Data -- "Empirical KWh" --> MCMC
-    MCMC -- "Exports Decoupled T*" --> Data
+    User[Energy Researcher\n[Person]\nExecutes the reproducible pipeline]:::person
+    System[ABS-UBEM\n[Software System]\nNational-scale spatial Bayesian energy model]:::system
+    
+    User -- "Configures and executes pipeline via CLI" --> System
 ```
+
+### Level 3: Component Diagram (ABS-UBEM Application)
+Zooming inside the application runtime to show the Python logic modules handling the physics-to-spatial pipeline.
+
+```mermaid
+graph TD
+    %% University of Manchester Brand Theme
+    classDef component fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:2px;
+    classDef database fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px;
+    classDef extLib fill:#333333,color:#FFFFFF,stroke:#FFCC33,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph ABS-UBEM Application Boundary
+        CLI[CLI Orchestrator\n[Python / Rich]\nEntry point and progress management]:::component
+        GP[GP Emulator Component\n[Python / Scikit-Learn]\nReplaces slow archetype matching with O(1) surrogate]:::component
+        RSR[RSR Component\n[Python / NumPy]\nOrthogonally projects spatial effects away from Z-confounders]:::component
+        MCMC[Bayesian Inference Engine\n[Python / PyMC]\nExecutes Sparse 1D Queen-contiguity ICAR]:::component
+        Data[(Local File System\n[Parquet / CSV]\nStores synthetic populations and empirical targets)]:::database
+    end
+    
+    PySAL[GeoPandas / PySAL\n[External Library]\nBuilds the spatial adjacency matrix]:::extLib
+
+    CLI -- "Reads configuration and data" --> Data
+    CLI -- "Triggers emulation" --> GP
+    GP -- "T* (Theoretical Energy) Predictions" --> RSR
+    RSR -- "Orthogonalized Z-Confounders" --> MCMC
+    MCMC -- "Reads Empirical KWh" --> Data
+    MCMC -- "Requests Edge-list" --> PySAL
+    MCMC -- "Writes Posterior Decoupled T*" --> Data
+```
+
+**C4 Legend:**
+*   **Purple (`#660099`)**: Primary Actors and Core Systems.
+*   **Gold/Yellow (`#FFCC33`)**: Internal Components and Local Storage.
+*   **Dark Grey (`#333333`)**: External Third-Party Library Dependencies.
 
 
