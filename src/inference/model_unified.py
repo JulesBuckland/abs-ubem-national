@@ -38,14 +38,14 @@ def log_memory(stage_name: str) -> None:
     else:
         logger.info(f"[RAM USAGE - {stage_name}]: (psutil not installed, cannot track RAM)")
 
-def _use_csv_baseline(df: pd.DataFrame) -> None:
+def _use_csv_baseline(df: pd.DataFrame) -> pd.DataFrame:
     """Fallback: merge theoretical_gas_kwh from the analytical CSV baseline.
 
-    Modifies the DataFrame in-place by adding a 'theoretical_gas_kwh' column
+    Returns a new DataFrame by adding a 'theoretical_gas_kwh' column
     based on the 'property_type' and 'property_age' archetype mapping.
 
     Args:
-        df (pd.DataFrame): The household dataframe to modify.
+        df (pd.DataFrame): The household dataframe.
 
     Raises:
         ValueError: If any archetype fails to map to the baseline CSV.
@@ -54,11 +54,11 @@ def _use_csv_baseline(df: pd.DataFrame) -> None:
     archetypes_path = RAW_DIR / "physics" / "physics_archetypes_baseline.csv"
     archetypes = pd.read_csv(archetypes_path)
     archetypes = archetypes[["property_type", "property_age", "theoretical_gas_kwh"]].drop_duplicates()
-    # Merge in-place (modifies the passed df via reference on column assignment)
+    # Merge and return a new DataFrame (pure function)
     merged = df.merge(archetypes, on=["property_type", "property_age"], how="left")
     if merged["theoretical_gas_kwh"].isna().any():
         raise ValueError("FATAL: Failed to map CSV baseline to some archetypes! Missing values found.")
-    df["theoretical_gas_kwh"] = merged["theoretical_gas_kwh"].values
+    return df.assign(theoretical_gas_kwh=merged["theoretical_gas_kwh"].values)
 
 
 def run_national_unified_model() -> az.InferenceData:
@@ -116,7 +116,7 @@ def run_national_unified_model() -> az.InferenceData:
                 "Ensure 01_population_synthesis.py has been updated (Step 6).\n"
                 "Falling back to CSV archetype baseline."
             )
-            _use_csv_baseline(df)
+            df = _use_csv_baseline(df)
         else:
             logger.info(f"Running GP predictions for {len(df):,} households...")
             X_hh = df[GP_FEATURES].values.astype(float)
@@ -139,8 +139,10 @@ def run_national_unified_model() -> az.InferenceData:
             # Zero Trust: Clamp Gaussian regression tails to prevent negative energy
             T_pred = np.maximum(0.0, T_pred)
             
-            df["theoretical_gas_kwh"] = T_pred * 277.778
-            df["T_std_kwh"]           = T_std * 277.778
+            df = df.assign(
+                theoretical_gas_kwh=T_pred * 277.778,
+                T_std_kwh=T_std * 277.778
+            )
             
             # E2E Inline Assertion: Bounds Check
             assert (df["theoretical_gas_kwh"] >= 0).all(), "FATAL: Negative theoretical gas prediction detected!"
@@ -151,7 +153,7 @@ def run_national_unified_model() -> az.InferenceData:
             f"GP emulator not found at {GP_MODEL_PATH}. "
             "Falling back to analytical CSV baseline (power-law HLC scaling)."
         )
-        _use_csv_baseline(df)
+        df = _use_csv_baseline(df)
     
     # Load confounders for Z_inc
     from src.config.settings import MSOA_CONFOUNDERS_NATIONAL
@@ -165,7 +167,7 @@ def run_national_unified_model() -> az.InferenceData:
     if "T_std_kwh" in df.columns:
         # GP predictive variance: propagate per-household GP uncertainty to MSOA mean
         # We use the Delta method approximation for Var(log T) ≈ (sigma / mu)^2
-        df['log_T_var'] = (df['T_std_kwh'] / df['theoretical_gas_kwh'].clip(lower=1)) ** 2
+        df = df.assign(log_T_var=(df['T_std_kwh'] / df['theoretical_gas_kwh'].clip(lower=1)) ** 2)
         msoa_stats = df.groupby('msoa21cd').agg(
             y_mean=('empirical_thermal_kwh', 'mean'),
             T_mean=('theoretical_gas_kwh', 'mean'),
@@ -364,7 +366,7 @@ def run_national_unified_model() -> az.InferenceData:
     # Let Z_ref = 0 (average income)
     T_star = np.exp(y_obs - b_inc_mean * income_z)
     
-    msoa_stats['T_star_kwh'] = T_star
+    msoa_stats = msoa_stats.assign(T_star_kwh=T_star)
     msoa_stats.to_csv(PROCESSED_DIR / "msoa_unified_results.csv", index=False)
     logger.info("Saved true empirically decoupled T* results.")
     log_memory("Final Exit")

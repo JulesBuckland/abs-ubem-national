@@ -1,0 +1,254 @@
+[
+    {
+        "key": "Grey2017",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Wilkinson2001",
+        "status": "Skipped",
+        "size": 0,
+        "error": "Is a book"
+    },
+    {
+        "key": "Booth2013",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "NetoBradley2021",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Boardman1991",
+        "status": "Skipped",
+        "size": 0,
+        "error": "Is a book"
+    },
+    {
+        "key": "Hills2012",
+        "status": "Downloaded",
+        "size": 5717241,
+        "error": null
+    },
+    {
+        "key": "LILEE2021",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Lutzenhiser2009",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "DESNZ2024",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "ONS2021",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Liddell2010",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Walker2012",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Rue2009",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Smith2017",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Morris2019",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Sharpe2019",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Ferrando2022",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Hamilton2017",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Chen2017",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Reinhart2016",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "DECC2013",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Evans1980",
+        "status": "Skipped",
+        "size": 0,
+        "error": "Is a book"
+    },
+    {
+        "key": "ISO13789",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Riebler2016",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "lovelace2016spatial",
+        "status": "Skipped",
+        "size": 0,
+        "error": "Is a book"
+    },
+    {
+        "key": "petrou2024bayesian",
+        "status": "Downloaded",
+        "size": 4501488,
+        "error": null
+    },
+    {
+        "key": "Cerezo2017",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Hong2009",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Kennedy2001",
+        "status": "Downloaded",
+        "size": 21306187,
+        "error": null
+    },
+    {
+        "key": "Tinsley2022",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Batty2018",
+        "status": "Downloaded",
+        "size": 4154061,
+        "error": null
+    },
+    {
+        "key": "Nidam2023",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Ward2019",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Gelman2006",
+        "status": "Downloaded",
+        "size": 262995,
+        "error": null
+    },
+    {
+        "key": "SunikkaBlank2012",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Hanks2015",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    },
+    {
+        "key": "Kucukelbir2017",
+        "status": "Downloaded",
+        "size": 4991199,
+        "error": null
+    },
+    {
+        "key": "Yao2018",
+        "status": "Downloaded",
+        "size": 807528,
+        "error": null
+    },
+    {
+        "key": "Simpson2017",
+        "status": "Downloaded",
+        "size": 1351494,
+        "error": null
+    },
+    {
+        "key": "phan2019composable",
+        "status": "Downloaded",
+        "size": 160654,
+        "error": null
+    },
+    {
+        "key": "hoffman2014no",
+        "status": "Downloaded",
+        "size": 1027744,
+        "error": null
+    },
+    {
+        "key": "Hodges2010",
+        "status": "Failed",
+        "size": 0,
+        "error": "No open-access PDF URL found or download failed"
+    }
+]
