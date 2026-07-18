@@ -207,9 +207,14 @@ def _run_single_axis(axis: int, run_id: str, args: dict, template_str: str, weat
             [str(EP_EXE), "-w", str(weather_file), "-d", str(axis_dir), str(idf_path)],
             capture_output=True, timeout=120
         )
-        return _parse_heating_kwh(axis_dir)
+        val = _parse_heating_kwh(axis_dir)
+        import shutil
+        shutil.rmtree(axis_dir, ignore_errors=True)
+        return val
     except Exception as e:
         logger.warning(f"FAILED {run_axis_id}: {e}")
+        import shutil
+        shutil.rmtree(axis_dir, ignore_errors=True)
         return 0.0
 
 def run_single(args: dict) -> dict:

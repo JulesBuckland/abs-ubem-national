@@ -168,6 +168,11 @@ def process_row(row: pd.Series, template: str) -> float:
     
     total_hlc = calculate_hlc(sim_df, a_spec['ach'], geo['zone_volume'])
     print(f"  HLC: {total_hlc:.2f} W/K")
+    
+    import shutil
+    shutil.rmtree(out_dir, ignore_errors=True)
+    idf_path.unlink(missing_ok=True)
+    
     return total_hlc
 
 def process_all_rows(df: pd.DataFrame, template: str) -> List[float]:

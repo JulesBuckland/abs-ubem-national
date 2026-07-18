@@ -1,4 +1,4 @@
-# ABS-UBEM: Agent-Based Spatial Urban Building Energy Model
+# ABS-UBEM: Auto-Differentiable Bayesian Surrogate for Urban Building Energy Modeling
 
 A highly-scalable, methodologically rigorous Bayesian inference pipeline for decoupling physical building efficiency from socioeconomic energy rationing (fuel poverty).
 
@@ -12,11 +12,11 @@ python -m src.cli.run_inference
 
 ## System Architecture
 
-Below is the complete computational architecture mapping the flow of data through the physics surrogate and Bayesian components.
+Below is the complete computational architecture mapping the flow of data through the Iterative Proportional Fitting, physics surrogate, and Bayesian components.
 
 ```mermaid
 ---
-title: ABS-UBEM Pipeline Architecture
+title: ABS-UBEM: Auto-Differentiable Bayesian Spatial Pipeline
 ---
 flowchart TD
     %% Styling - University of Manchester Brand Colours
@@ -28,14 +28,16 @@ flowchart TD
 
     User["Energy Researcher<br/>[Person]<br/>Executes inference pipeline"]:::person
 
-    InputFS["Input Data Store<br/>[Local File System]<br/>Synthetic Population (.parquet)<br/>Pre-trained Models (.pkl)<br/>MSOA Boundaries"]:::datastore
+    InputFS["Input Data Store<br/>[Local File System]<br/>Census Marginals<br/>Pre-trained Models (.pkl)<br/>MSOA Boundaries"]:::datastore
     OutputFS["Output Data Store<br/>[Local File System]<br/>Posterior Traces (.nc)<br/>Decoupled Metrics (.csv)"]:::datastore
 
     CLI["ABS-UBEM CLI Orchestrator<br/>[Python / Rich]<br/>Manages execution flow and state"]:::orchestrator
 
     subgraph CoreLogic ["Core Physics & Spatial Math"]
         direction TB
-        GP["Gaussian Process Surrogate Model<br/>[Scikit-Learn]<br/>Replaces slow thermodynamic simulations<br/>by mapping housing archetypes to<br/>theoretical energy demand (T*) in O(1) time"]:::logic
+        IPF["Iterative Proportional Fitting (IPF)<br/>[NumPy/SciPy]<br/>Generates high-resolution synthetic agents<br/>matching national census marginals"]:::logic
+
+        GP["Gaussian Process Surrogate Model<br/>[Scikit-Learn / PyTensor]<br/>Auto-Differentiable mapping of housing archetypes<br/>to theoretical energy demand (T*) in O(1) time"]:::logic
         
         RSR["Restricted Spatial Regression (RSR)<br/>[NumPy]<br/>Projects the spatial random effect<br/>onto the orthogonal complement of<br/>the Income Deprivation Index (Z)"]:::logic
         
@@ -46,8 +48,9 @@ flowchart TD
 
     User -- "Triggers Pipeline" --> CLI
     CLI -- "Loads data" --> InputFS
-    CLI -- "Initialises" --> GP
-    GP -- "Passes T* Predictions" --> RSR
+    CLI -- "Initialises" --> IPF
+    IPF -- "Passes Synthetic Agents" --> GP
+    GP -- "Passes Differentiable T*" --> RSR
     RSR -- "Passes Orthogonalised Z" --> MCMC
     MCMC -- "Requests Adjacency Edge-List" --> PySAL
     MCMC -- "Writes Posterior Results" --> OutputFS
