@@ -334,7 +334,7 @@ def run_national_unified_model() -> az.InferenceData:
     logger.info("Model fitted successfully! Saving Trace FIRST...")
     trace_path = PROCESSED_DIR / "national_unified_trace.nc"
     if trace_path.exists():
-        trace_path.unlink() # Idempotency: Overwrite cleanly
+        trace_path.unlink(missing_ok=True) # Idempotency: Overwrite cleanly
     trace.to_netcdf(trace_path)
 
     logger.info("Computing Log Likelihood...")
