@@ -12,6 +12,36 @@ from src.config.settings import (
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger("NationalNonSpatialPilot")
 
+def build_and_sample_pilot(df: pd.DataFrame, n_fit=30000, draws=1000):
+    y_obs = np.log(df['empirical_gas_kwh'].values)
+    theory_need_log = np.log(df['theoretical_gas_kwh'].values)
+    income_score = df['income_dep_score'].values
+    
+    # Global scaling for income
+    i_mean, i_std = income_score.mean(), income_score.std()
+    income_z = (income_score - i_mean) / i_std
+    
+    with pm.Model() as model:
+        # Priors
+        beta_theory = pm.Normal("beta_theory", mu=-0.3, sigma=0.1)
+        beta_income = pm.Normal("beta_income", mu=0.0, sigma=0.5)
+        
+        # Likelihood (using MSOA means)
+        # mu = physics_offset - global_rationing
+        mu = theory_need_log + beta_theory + beta_income * income_z
+        
+        # Sigma for residual MSOA variance
+        sigma_msoa = pm.HalfNormal("sigma_msoa", 0.5)
+        
+        y = pm.Normal("y", mu=mu, sigma=sigma_msoa, observed=y_obs)
+        
+        # Sampling with ADVI for speed
+        approx = pm.fit(n=n_fit, method='advi', random_seed=RANDOM_SEED)
+        trace = approx.sample(draws)
+        
+        summary = az.summary(trace, var_names=["beta_theory", "beta_income"])
+    return summary
+
 def run_pilot_model():
     logger.info("--- STAGE 3.1: NATIONAL NON-SPATIAL PILOT (Global Estimation) ---")
     
@@ -31,40 +61,13 @@ def run_pilot_model():
     
     logger.info(f"Running non-spatial model for {len(df)} MSOAs...")
     
-    # 2. Prepare Variables
-    y_obs = np.log(df['empirical_gas_kwh'].values)
-    theory_need_log = np.log(df['theoretical_gas_kwh'].values)
-    income_score = df['income_dep_score'].values
+    summary = build_and_sample_pilot(df)
     
-    # Global scaling for income
-    i_mean, i_std = income_score.mean(), income_score.std()
-    income_z = (income_score - i_mean) / i_std
+    logger.info("\n" + str(summary))
     
-    # 3. Bayesian Model (Non-Spatial)
-    with pm.Model() as model:
-        # Priors
-        beta_theory = pm.Normal("beta_theory", mu=-0.3, sigma=0.1)
-        beta_income = pm.Normal("beta_income", mu=0.0, sigma=0.5)
-        
-        # Likelihood (using MSOA means)
-        # mu = physics_offset - global_rationing
-        mu = theory_need_log + beta_theory + beta_income * income_z
-        
-        # Sigma for residual MSOA variance
-        sigma_msoa = pm.HalfNormal("sigma_msoa", 0.5)
-        
-        y = pm.Normal("y", mu=mu, sigma=sigma_msoa, observed=y_obs)
-        
-        # Sampling with ADVI for speed
-        approx = pm.fit(n=30000, method='advi', random_seed=RANDOM_SEED)
-        trace = approx.sample(1000)
-        
-        summary = az.summary(trace, var_names=["beta_theory", "beta_income"])
-        logger.info("\n" + str(summary))
-        
-        # Save results to processed dir for injection
-        summary.to_csv(PROCESSED_DIR / "national_pilot_coefficients.csv")
-        logger.info(f"Pilot coefficients saved to {PROCESSED_DIR / 'national_pilot_coefficients.csv'}")
+    # Save results to processed dir for injection
+    summary.to_csv(PROCESSED_DIR / "national_pilot_coefficients.csv")
+    logger.info(f"Pilot coefficients saved to {PROCESSED_DIR / 'national_pilot_coefficients.csv'}")
 
 if __name__ == "__main__":
     run_pilot_model()
