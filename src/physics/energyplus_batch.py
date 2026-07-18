@@ -24,6 +24,7 @@ import math
 import argparse
 import re
 from tqdm import tqdm
+from typing import Dict, Any, List, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("EnergyPlusLHSBatch")
@@ -45,17 +46,24 @@ SIM_DIR.mkdir(parents=True, exist_ok=True)
 HEIGHT_PER_FLOOR = 3.0
 
 # ---------------------------------------------------------------------------
-# IDF generation
+# Pure Functions
 # ---------------------------------------------------------------------------
-def _bc(exposed_walls: int, wall_idx: int) -> tuple[str, str, str]:
+def _bc(exposed_walls: int, wall_idx: int) -> Tuple[str, str, str]:
     """Return (boundary, sun, wind) for wall_idx given exposed_walls count."""
     if wall_idx < exposed_walls:
         return "Outdoors", "SunExposed", "WindExposed"
     return "Adiabatic", "NoSun", "NoWind"
 
-def build_idf(run_id: str, floor_area: float, wall_u: float, ach: float,
-              wwr: float, floors: int, exposed_walls: int, north_axis: float,
-              occupants: float, lights_w: float, equip_w: float) -> str:
+def calculate_occupants(floor_area: float) -> float:
+    """Calculate SAP 2012 Occupancy based on Floor Area."""
+    if floor_area > 13.9:
+        return 1 + 1.76 * (1 - math.exp(-0.000349 * (floor_area - 13.9)**2)) + 0.0013 * (floor_area - 13.9)
+    return 1.0
+
+def build_idf_string(template_str: str, run_id: str, floor_area: float, wall_u: float, ach: float,
+                     wwr: float, floors: int, exposed_walls: int, north_axis: float,
+                     occupants: float, lights_w: float, equip_w: float) -> str:
+    """Pure function to build IDF string from a template string."""
     footprint = floor_area / floors
     side = math.sqrt(footprint)
     total_height = floors * HEIGHT_PER_FLOOR
@@ -74,10 +82,7 @@ def build_idf(run_id: str, floor_area: float, wall_u: float, ach: float,
 
     r_wall   = 1.0 / wall_u
 
-    with open(TEMPLATE_FILE, "r") as f:
-        idf = f.read()
-
-    idf = idf.replace("@@ARCHETYPE_NAME@@", run_id)
+    idf = template_str.replace("@@ARCHETYPE_NAME@@", run_id)
     idf = idf.replace("@@NORTH_AXIS@@",     f"{north_axis:.1f}")
     idf = idf.replace("@@PEOPLE_COUNT@@",   f"{occupants:.2f}")
     idf = idf.replace("@@LIGHTING_W@@",     f"{lights_w:.2f}")
@@ -103,8 +108,41 @@ def build_idf(run_id: str, floor_area: float, wall_u: float, ach: float,
     idf = idf.replace("@@BC_WEST@@",   bc_w).replace("@@SUN_WEST@@",  sun_w).replace("@@WIND_WEST@@",  wind_w)
     return idf
 
+def generate_task_from_row(row: pd.Series, resume: bool) -> Dict[str, Any]:
+    """Pure function to map a row to a task definition."""
+    slug = (str(row["archetype"])
+            .replace(" ", "_")
+            .replace("/", "-")
+            .replace("+", "plus"))
+    run_id = f"{slug}_s{int(row['sample_id']):04d}"
+    
+    task = {
+        "run_id":        run_id,
+        "archetype":     row["archetype"],
+        "property_type": row["property_type"],
+        "age_band":      row["age_band"],
+        "floor_area":    float(row["floor_area"]),
+        "wall_u":        float(row["wall_u"]),
+        "ach":           float(row["ach"]),
+        "wwr":           float(row["wwr"]),
+        "form_code":     int(row["form_code"]),
+        "floors":        int(row["floors"]),
+        "exposed_walls": int(row["exposed_walls"]),
+        "sample_id":     int(row["sample_id"]),
+        "resume":        resume,
+    }
+    if "city" in row:
+        task["city"] = row["city"]
+    if "hdd" in row:
+        task["hdd"] = float(row["hdd"])
+    return task
+
+def generate_tasks_from_df(df: pd.DataFrame, resume: bool) -> List[Dict[str, Any]]:
+    """Pure function returning a new list of tasks."""
+    return [generate_task_from_row(row, resume) for _, row in df.iterrows()]
+
 # ---------------------------------------------------------------------------
-# Energy Parsing
+# Side-effect Functions (I/O)
 # ---------------------------------------------------------------------------
 def _parse_heating_kwh(out_dir: Path) -> float:
     html_path = out_dir / "eplustbl.htm"
@@ -122,16 +160,58 @@ def _parse_heating_kwh(out_dir: Path) -> float:
                 try: 
                     total_gj += float(c.strip())
                 except ValueError as e: 
-                    logger.debug(f"Skipping non-numeric column value in heating row: {c}")
+                    pass
             return total_gj * 277.778 # Convert GJ to kWh
         else:
             raise RuntimeError(f"Could not find Heating row in eplustbl.htm for {out_dir}")
     else:
         raise RuntimeError(f"Could not find End Uses table in eplustbl.htm for {out_dir}")
 
-# ---------------------------------------------------------------------------
-# Single EnergyPlus run
-# ---------------------------------------------------------------------------
+def read_template_file(template_path: Path) -> str:
+    with open(template_path, "r") as f:
+        return f.read()
+
+def write_idf_file(idf_path: Path, idf_str: str) -> None:
+    with open(idf_path, "w") as f:
+        f.write(idf_str)
+
+def _run_single_axis(axis: int, run_id: str, args: dict, template_str: str, weather_file: Path, out_dir: Path) -> float:
+    run_axis_id = f"{run_id}_axis{axis}"
+    axis_dir = out_dir / run_axis_id
+    axis_dir.mkdir(parents=True, exist_ok=True)
+    idf_path = axis_dir / f"{run_axis_id}.idf"
+    
+    occupants = calculate_occupants(args["floor_area"])
+    lights_w = args["floor_area"] * 2.0
+    equip_w = args["floor_area"] * 3.0
+    
+    idf_str = build_idf_string(
+        template_str=template_str,
+        run_id=run_axis_id,
+        floor_area=args["floor_area"],
+        wall_u=args["wall_u"],
+        ach=args["ach"],
+        wwr=args["wwr"],
+        floors=args["floors"],
+        exposed_walls=args["exposed_walls"],
+        north_axis=axis,
+        occupants=occupants,
+        lights_w=lights_w,
+        equip_w=equip_w
+    )
+    
+    write_idf_file(idf_path, idf_str)
+
+    try:
+        subprocess.run(
+            [str(EP_EXE), "-w", str(weather_file), "-d", str(axis_dir), str(idf_path)],
+            capture_output=True, timeout=120
+        )
+        return _parse_heating_kwh(axis_dir)
+    except Exception as e:
+        logger.warning(f"FAILED {run_axis_id}: {e}")
+        return 0.0
+
 def run_single(args: dict) -> dict:
     run_id   = args["run_id"]
     out_dir  = SIM_DIR / run_id
@@ -141,59 +221,27 @@ def run_single(args: dict) -> dict:
         with open(result_file) as f:
             return json.load(f)
 
-    # Calculate SAP 2012 Occupancy based on Floor Area
-    A = args["floor_area"]
-    if A > 13.9:
-        occupants = 1 + 1.76 * (1 - math.exp(-0.000349 * (A - 13.9)**2)) + 0.0013 * (A - 13.9)
-    else:
-        occupants = 1.0
-        
-    lights_w = A * 2.0  # nominal
-    equip_w = A * 3.0   # nominal
-
     city = args.get("city", "Manchester")
     weather_file = PHYSICS_DIR / f"{city}_2030_ColdSnap.epw"
+    template_str = read_template_file(TEMPLATE_FILE)
 
-    t_h_runs = []
-    for axis in [0, 90, 180, 270]:
-        run_axis_id = f"{run_id}_axis{axis}"
-        axis_dir = out_dir / run_axis_id
-        axis_dir.mkdir(parents=True, exist_ok=True)
-        idf_path = axis_dir / f"{run_axis_id}.idf"
-        
-        idf_str = build_idf(
-            run_id=run_axis_id,
-            floor_area=args["floor_area"],
-            wall_u=args["wall_u"],
-            ach=args["ach"],
-            wwr=args["wwr"],
-            floors=args["floors"],
-            exposed_walls=args["exposed_walls"],
-            north_axis=axis,
-            occupants=occupants,
-            lights_w=lights_w,
-            equip_w=equip_w
-        )
-        with open(idf_path, "w") as f:
-            f.write(idf_str)
+    axes = [0, 90, 180, 270]
+    t_h_runs = [_run_single_axis(axis, run_id, args, template_str, weather_file, out_dir) for axis in axes]
+    valid_runs = [v for v in t_h_runs if v > 0.0]
 
-        try:
-            proc = subprocess.run(
-                [str(EP_EXE), "-w", str(weather_file), "-d", str(axis_dir), str(idf_path)],
-                capture_output=True, timeout=120
-            )
-            t_h_runs.append(_parse_heating_kwh(axis_dir))
-        except Exception as e:
-            logger.warning(f"FAILED {run_axis_id}: {e}")
+    T_h = sum(valid_runs) / max(1, len(valid_runs)) if valid_runs else 0.0
 
-    # Average the 4 orientations
-    T_h = sum(t_h_runs) / max(1, len(t_h_runs)) if t_h_runs else 0.0
-
-    result = {**args, "T_h": T_h, "status": "ok" if t_h_runs else "error"}
+    result = {**args, "T_h": T_h, "status": "ok" if valid_runs else "error"}
     with open(result_file, "w") as f:
         json.dump(result, f)
 
     return result
+
+def check_placeholder_weather(physics_dir: Path) -> bool:
+    for wf in physics_dir.glob("*.epw"):
+        if wf.stat().st_size == 1546562:
+            return True
+    return False
 
 # ---------------------------------------------------------------------------
 # Main
@@ -208,49 +256,13 @@ def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume
         logger.error(f"EnergyPlus executable not found at {EP_EXE}")
         return
         
-    # Failsafe: Check for placeholder weather files (all exactly 1,546,562 bytes)
-    placeholder_found = False
-    for wf in PHYSICS_DIR.glob("*.epw"):
-        if wf.stat().st_size == 1546562:
-            placeholder_found = True
-            break
-            
-    if placeholder_found:
+    if check_placeholder_weather(PHYSICS_DIR):
         logger.error("ERROR: Placeholder weather files (1,546,562 bytes) detected in data/raw/physics/! You must download real .epw files before running simulations.")
-        # We don't halt here if they really want to proceed, but it's a huge warning.
 
     logger.info(f"Found {len(design_files)} archetype design files.")
 
-    all_tasks = []
-    for design_file in design_files:
-        df = pd.read_csv(design_file)
-        for _, row in df.iterrows():
-            slug = (str(row["archetype"])
-                    .replace(" ", "_")
-                    .replace("/", "-")
-                    .replace("+", "plus"))
-            run_id = f"{slug}_s{int(row['sample_id']):04d}"
-            task = {
-                "run_id":        run_id,
-                "archetype":     row["archetype"],
-                "property_type": row["property_type"],
-                "age_band":      row["age_band"],
-                "floor_area":    float(row["floor_area"]),
-                "wall_u":        float(row["wall_u"]),
-                "ach":           float(row["ach"]),
-                "wwr":           float(row["wwr"]),
-                "form_code":     int(row["form_code"]),
-                "floors":        int(row["floors"]),
-                "exposed_walls": int(row["exposed_walls"]),
-                "sample_id":     int(row["sample_id"]),
-                "resume":        resume,
-            }
-            # Append city and hdd if defined in LHS
-            if "city" in row:
-                task["city"] = row["city"]
-            if "hdd" in row:
-                task["hdd"] = float(row["hdd"])
-            all_tasks.append(task)
+    all_tasks_nested = [generate_tasks_from_df(pd.read_csv(f), resume) for f in design_files]
+    all_tasks = [task for sublist in all_tasks_nested for task in sublist]
 
     logger.info(f"Total runs: {len(all_tasks)}")
 
@@ -260,24 +272,14 @@ def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume
         logger.info(f"Completeness: {done}/{total} ({100*done/total:.1f}%)")
         return
 
-    results = []
-    completed = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(run_single, task): task for task in all_tasks}
-        
-        # Wrap as_completed with tqdm for a nice loading bar
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(all_tasks), desc="Simulating"):
-            try:
-                results.append(future.result())
-            except Exception as e:
-                task = futures[future]
-                logger.warning(f"Worker exception for {task['run_id']}: {e}")
-            completed += 1
+        futures = [executor.submit(run_single, task) for task in all_tasks]
+        results = [f.result() for f in tqdm(concurrent.futures.as_completed(futures), total=len(all_tasks), desc="Simulating") if not f.exception()]
 
     df_all = pd.DataFrame(results)
     combined_path = PHYSICS_DIR / "lhs_results_combined.csv"
     df_all.to_csv(combined_path, index=False)
-    logger.info(f"Saved combined results → {combined_path}")
+    logger.info(f"Saved combined results -> {combined_path}")
 
     for arch, grp in df_all.groupby("archetype"):
         slug = arch.replace(" ", "_").replace("/", "-").replace("+", "plus")

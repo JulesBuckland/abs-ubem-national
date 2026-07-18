@@ -17,7 +17,18 @@ logger = logging.getLogger("EPWParser")
 
 import sys
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from src.config.settings import BASE_TEMP_HDD
+try:
+    from src.config.settings import BASE_TEMP_HDD, RAW_DIR, REGIONAL_CENTERS
+except ImportError:
+    BASE_TEMP_HDD = 15.5
+
+def extract_daily_means(temperatures: np.ndarray) -> np.ndarray:
+    num_days = len(temperatures) // 24
+    trimmed = temperatures[:num_days * 24]
+    return trimmed.reshape(num_days, 24).mean(axis=1)
+
+def calculate_hdd(daily_means: np.ndarray, base_temp: float) -> float:
+    return float(np.sum(np.maximum(0, base_temp - daily_means)))
 
 def calculate_hdd_from_epw(epw_path: Path) -> float:
     """
@@ -28,23 +39,9 @@ def calculate_hdd_from_epw(epw_path: Path) -> float:
         raise FileNotFoundError(f"Missing EPW file: {epw_path}. Cannot calculate valid HDD without real weather data.")
 
     try:
-        # EPW weather data starts on line 9 (index 8). 
-        # Column 6 (0-indexed) is Dry Bulb Temperature.
-        # We can read it efficiently using pandas.
         df = pd.read_csv(epw_path, skiprows=8, header=None, usecols=[6], names=["dry_bulb_temp"])
-        
-        # Calculate daily mean temperatures
-        # Assuming exactly 8760 hours (365 days * 24 hours). 
-        # If leap year 8784, it will just take the floor of days.
-        num_days = len(df) // 24
-        df = df.iloc[:num_days * 24] # Trim any trailing hours
-        
-        daily_means = df['dry_bulb_temp'].values.reshape(num_days, 24).mean(axis=1)
-        
-        # Calculate HDD
-        hdd = np.sum(np.maximum(0, BASE_TEMP_HDD - daily_means))
-        return float(hdd)
-        
+        daily_means = extract_daily_means(df['dry_bulb_temp'].values)
+        return calculate_hdd(daily_means, BASE_TEMP_HDD)
     except Exception as e:
         raise RuntimeError(f"Failed to parse EPW {epw_path}: {e}")
 
@@ -55,18 +52,13 @@ def get_regional_hdd_map(physics_dir: Path, cities: list[str]) -> dict[str, floa
     """
     hdd_map = {}
     for city in cities:
-        # Assuming filename format aligns with our placeholders / actual downloads
         epw_file = physics_dir / f"{city}_2030_ColdSnap.epw"
-        hdd = calculate_hdd_from_epw(epw_file)
-        hdd_map[city] = hdd
+        hdd_map[city] = calculate_hdd_from_epw(epw_file)
         
     return hdd_map
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    import sys
-    sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-    from src.config.settings import RAW_DIR, REGIONAL_CENTERS
     PHYSICS_DIR = RAW_DIR / "physics"
     cities = list(REGIONAL_CENTERS.keys())
     hdd_map = get_regional_hdd_map(PHYSICS_DIR, cities)
