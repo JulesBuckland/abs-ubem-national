@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 import subprocess
 import pandas as pd
 from pathlib import Path
@@ -9,8 +10,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 @pytest.fixture(scope="session", autouse=True)
 def set_test_mode():
     os.environ["TEST_MODE"] = "1"
+    os.environ["PYTHONIOENCODING"] = "utf-8"
     yield
     del os.environ["TEST_MODE"]
+    del os.environ["PYTHONIOENCODING"]
 
 def test_pipeline_e2e():
     """
@@ -21,7 +24,7 @@ def test_pipeline_e2e():
     
     # 1. Synthesis
     result_synthesis = subprocess.run(
-        ["python", "-m", "src.data.population"],
+        [sys.executable, "-m", "src.data.population"],
         cwd=str(BASE_DIR),
         env=os.environ.copy(),
         capture_output=True,
@@ -36,9 +39,9 @@ def test_pipeline_e2e():
     assert not df_synth.empty, "Synthetic population is empty."
     assert df_synth['floor_area'].min() >= 20.0, "Physical bounds failure: floor area < 20."
 
-    # 2. GP Emulator Training
+    # 2. GP Emulator
     result_gp = subprocess.run(
-        ["python", "-m", "src.inference.gp_emulator"],
+        [sys.executable, "-m", "src.inference.gp_emulator"],
         cwd=str(BASE_DIR),
         env=os.environ.copy(),
         capture_output=True,
@@ -50,15 +53,15 @@ def test_pipeline_e2e():
     gp_path = BASE_DIR / "tests" / "fixtures" / "processed" / "gp_emulator.pkl"
     assert gp_path.exists(), "GP emulator pickle not found."
 
-    # 3. Bayesian Model 
-    result_bayes = subprocess.run(
-        ["python", "-m", "src.inference.model_unified"],
+    # 3. National Unified Model
+    result_unified = subprocess.run(
+        [sys.executable, "-m", "src.inference.model_unified"],
         cwd=str(BASE_DIR),
         env=os.environ.copy(),
         capture_output=True,
         text=True
     )
-    assert result_bayes.returncode == 0, f"Bayesian model crashed:\n{result_bayes.stderr}"
+    assert result_unified.returncode == 0, f"National Unified Model crashed:\n{result_unified.stderr}"
     
     # Verify Bayesian output
     trace_path = BASE_DIR / "tests" / "fixtures" / "processed" / "national_unified_trace.nc"
