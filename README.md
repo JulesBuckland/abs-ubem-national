@@ -1,4 +1,4 @@
-# ABS-UBEM: Auto-Differentiable Bayesian Surrogate for Urban Building Energy Modeling
+# BS-UBEM: Auto-Differentiable Bayesian Surrogate for Urban Building Energy Modeling
 
 A highly-scalable, methodologically rigorous Bayesian inference pipeline for decoupling physical building efficiency from socioeconomic energy rationing (fuel poverty).
 
@@ -16,7 +16,7 @@ Below is the complete computational architecture mapping the flow of data throug
 
 ```mermaid
 ---
-title: ABS-UBEM: Auto-Differentiable Bayesian Spatial Pipeline
+title: BS-UBEM: Auto-Differentiable Bayesian Spatial Pipeline
 ---
 flowchart TD
     %% Styling - University of Manchester Brand Colours
@@ -31,7 +31,7 @@ flowchart TD
     InputFS["Input Data Store<br/>[Local File System]<br/>Census Marginals<br/>Pre-trained Models (.pkl)<br/>MSOA Boundaries"]:::datastore
     OutputFS["Output Data Store<br/>[Local File System]<br/>Posterior Traces (.nc)<br/>Decoupled Metrics (.csv)"]:::datastore
 
-    CLI["ABS-UBEM CLI Orchestrator<br/>[Python / Rich]<br/>Manages execution flow and state"]:::orchestrator
+    CLI["BS-UBEM CLI Orchestrator<br/>[Python / Rich]<br/>Manages execution flow and state"]:::orchestrator
 
     subgraph CoreLogic ["Core Physics & Spatial Math"]
         direction TB

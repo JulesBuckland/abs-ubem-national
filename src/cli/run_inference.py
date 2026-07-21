@@ -1,5 +1,5 @@
 """
-CLI entry point for the ABS-UBEM production pipeline.
+CLI entry point for the BS-UBEM production pipeline.
 """
 import sys
 import time
