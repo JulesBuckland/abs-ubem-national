@@ -85,8 +85,8 @@ BASE_TEMP_HDD = 15.5
 
 # --- STATISTICAL SETTINGS ---
 # MCMC settings for Bayesian ICAR model
-MCMC_SAMPLES = 50 # Increased for final publication run
-MCMC_TUNE = 50 # Increased heavily to force hyperparameter convergence
+MCMC_SAMPLES = 2000 # Increased for final publication run
+MCMC_TUNE = 2000 # Increased heavily to force hyperparameter convergence
 MCMC_CORES = 4 
 MCMC_CHAINS = 4
 

@@ -16,7 +16,7 @@ from src.config.settings import BOUNDARIES_PATH, RAW_DIR, PROCESSED_DIR, setup_l
 logger = setup_logging("Competitors")
 
 def run_all_models():
-    logger.info("--- STAGE: BENCHMARK COMPETITORS vs ABS-UBEM ---")
+    logger.info("--- STAGE: BENCHMARK COMPETITORS vs BS-UBEM ---")
     
     # Setup Data - Dummy Data 
     boundaries_path = BOUNDARIES_PATH
@@ -47,7 +47,7 @@ def run_all_models():
     income_z = np.random.normal(0, 1, N)
     T_var = np.zeros(N)
     
-    # True data generating process (ABS-UBEM is correct)
+    # True data generating process (BS-UBEM is correct)
     beta_th_true = -0.3
     beta_inc_true = -0.5
     spatial_eff_true = np.random.normal(0, 0.5, N)
@@ -88,8 +88,8 @@ def run_all_models():
         pm.compute_log_likelihood(trace_b)
         models['Competitor B'] = trace_b
 
-    # ABS-UBEM
-    logger.info("Running ABS-UBEM (Synthesis)...")
+    # BS-UBEM
+    logger.info("Running BS-UBEM (Synthesis)...")
     with pm.Model() as abs_ubem:
         beta_th = pm.Normal("beta_th", mu=-0.3, sigma=0.1)
         beta_inc = pm.Normal("beta_inc", mu=0.0, sigma=0.5)
@@ -108,10 +108,10 @@ def run_all_models():
         y = pm.Normal("y", mu=mu, sigma=sigma_err, observed=y_obs)
         trace_abs = pm.sample(tune=100, draws=100, chains=2, cores=1, progressbar=False)
         pm.compute_log_likelihood(trace_abs)
-        models['ABS-UBEM'] = trace_abs
+        models['BS-UBEM'] = trace_abs
 
     print("\n=== BENCHMARK COMPLETED ===")
-    print("Competitor A, Competitor B, and ABS-UBEM sampled successfully.")
+    print("Competitor A, Competitor B, and BS-UBEM sampled successfully.")
     logger.info("Competitor Benchmark Finished!")
 
 if __name__ == "__main__":
