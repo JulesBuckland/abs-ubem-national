@@ -1,0 +1,35 @@
+# Methodology Overview
+
+This document provides a plain English description of the methodology used in this codebase. The pipeline is designed to model national building energy consumption, decouple physical building efficiency from socioeconomic behavior, and identify patterns of energy rationing.
+
+## 1. Data Flow and Population Synthesis
+
+The foundation of the model is the creation of a highly representative "synthetic population" of households across the nation, built at the local neighborhood level (Middle Layer Super Output Areas, or MSOAs). 
+
+The process begins by loading empirical microdata that includes actual gas and electricity consumption, alongside basic property information like age and type. The system cleans this data, establishing the true baseline of thermal energy usage for each household, making adjustments for homes that rely primarily on electric heating rather than gas.
+
+To scale this microdata up to a national level, the pipeline employs a statistical technique called Iterative Proportional Fitting (IPF). It takes localized Census marginals—such as the distribution of property types and tenure (owned, social, private)—along with local income deprivation scores. By matching the initial seed data against these local constraints, the system generates thousands of synthetic households for every neighborhood, ensuring the resulting population perfectly reflects the demographic and structural reality of each specific area.
+
+Finally, each synthetic household is assigned detailed physical characteristics. Based on the property's age and type, the system estimates specific architectural parameters like floor area, wall insulation (U-values), air leakage rates, and window-to-wall ratios. To maintain realism, slight natural variations are injected into these parameters so that not all "1950s semi-detached houses" are mathematically identical.
+
+## 2. The Physics Surrogate (Gaussian Process Emulator)
+
+Calculating the exact theoretical energy demand for millions of homes using heavy physics simulation software (like EnergyPlus) is computationally impossible. To solve this, the pipeline uses a machine learning surrogate model.
+
+First, a representative sample of building designs is generated and simulated using actual EnergyPlus software. These simulations account for 3D building geometry, solar gains, weather patterns, and thermodynamic heat loss. 
+
+The results from these physical simulations are then used to train a Gaussian Process (GP) emulator. This emulator learns the underlying physics, mapping how building characteristics (like size, insulation, and local weather) directly result in annual heating demand. Once trained, this GP emulator can predict the theoretical heating requirement for any household in the national synthetic population in a fraction of a second. Crucially, because it is a Gaussian Process, it doesn't just provide a single prediction; it also provides a measure of uncertainty for each prediction, which is vital for the later statistical stages.
+
+## 3. Bayesian Inference and Spatial Decoupling
+
+With the data prepared and the theoretical energy demands calculated, the pipeline moves to its core analytical stage: decoupling the physical efficiency of a building from the behavior of the people living inside it. 
+
+The individual household data is aggregated back up to the neighborhood (MSOA) level. The pipeline then constructs a geographical map (a spatial graph) connecting neighboring areas to account for regional similarities that span across administrative borders.
+
+A Bayesian inference model is then deployed to compare the **theoretical** energy demand (what the physics emulator says the buildings *should* use to stay warm) against the **empirical** energy consumption (what the utility meters say they *actually* used). 
+
+The Bayesian model specifically isolates the impact of socioeconomic factors. By analyzing income deprivation scores alongside the spatial map, it calculates a "rationing elasticity"—measuring exactly how much heating energy is being sacrificed due to economic hardship rather than building efficiency. A specialized statistical technique (Restricted Spatial Regression) ensures that the model doesn't confuse socioeconomic poverty with unobserved geographical effects (like microclimates).
+
+## 4. Final Outputs
+
+The ultimate result of the model is a decoupled energy metric. By stripping away the behavioral rationing effects measured by the Bayesian model, the pipeline calculates the true, underlying thermal efficiency of the housing stock in every neighborhood. This allows researchers and policymakers to see where homes are genuinely inefficient, separate from where households are simply too poor to heat them.
