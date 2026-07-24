@@ -8,6 +8,14 @@ Also verifies that the GP model file exists and is loadable.
 
 Exit code 0 = all tests passed. Non-zero = failures detected.
 
+INTENTIONALLY NOT PYTEST-DISCOVERABLE, and not run in CI. Unlike the rest of
+tests/integration/, this checks the real, production-scale gp_emulator.pkl
+(data/processed/, not tests/fixtures/) against the full physics archetype
+baseline — artifacts CI never produces (CI only exercises the tiny TEST_MODE
+fixture pipeline). Wrapping this in pytest test_* functions would only ever
+skip in CI, giving a false impression of coverage; run it manually instead,
+after a real (non-TEST_MODE) population synthesis + GP training run.
+
 Usage:
   python tests/integration/test_gp.py            # strict (±5%)
   python tests/integration/test_gp.py --loose    # loose (±10%)

@@ -76,78 +76,106 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-def train_gp(df: pd.DataFrame):
+def prepare_train_test_data(df: pd.DataFrame, max_train_points: int = 500):
+    """Split, subsample, and scale features. Returns
+    (X_train_s, X_test_s, X_test, y_train, y_test, scaler) — X_test is kept
+    unscaled (original feature units) alongside the scaled X_test_s, since
+    callers/plots may want either.
+
+    Subsampling caps training set size to prevent an O(n^2) covariance-matrix
+    OOM crash. The two train_test_split calls (and their random_state) must
+    stay in this exact order: reordering them would change which points end
+    up in the training set even though RANDOM_SEED is unchanged.
+    """
     X = df[FEATURES].values.astype(float)
     y = df[TARGET].values.astype(float)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_FRACTION, random_state=RANDOM_SEED
     )
-    
-    # Subsample training data to prevent OOM errors on 8000^2 covariance matrix
-    MAX_TRAIN_POINTS = 500
-    if len(X_train) > MAX_TRAIN_POINTS:
-        logger.info(f"Subsampling training set from {len(X_train)} to {MAX_TRAIN_POINTS} to prevent RAM crash.")
+
+    if len(X_train) > max_train_points:
+        logger.info(f"Subsampling training set from {len(X_train)} to {max_train_points} to prevent RAM crash.")
         X_train, _, y_train, _ = train_test_split(
-            X_train, y_train, train_size=MAX_TRAIN_POINTS, random_state=RANDOM_SEED
+            X_train, y_train, train_size=max_train_points, random_state=RANDOM_SEED
         )
 
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
-    X_test_s  = scaler.transform(X_test)
+    X_test_s = scaler.transform(X_test)
+    return X_train_s, X_test_s, X_test, y_train, y_test, scaler
 
-    # Matérn(ν=2.5) kernel: once-differentiable, standard for physical emulators
-    # WhiteKernel absorbs observation noise (numerical/EnergyPlus discretisation)
+
+def fit_gp_model(X_train_s: np.ndarray, y_train: np.ndarray) -> GaussianProcessRegressor:
+    """Fit the Matérn(ν=2.5) + WhiteKernel GP emulator on already-scaled features."""
     kernel = (
         ConstantKernel(1.0, constant_value_bounds=(1e-3, 1e3))
         * Matern(length_scale=np.ones(len(FEATURES)), length_scale_bounds=(1e-2, 1e3), nu=2.5)
         + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-10, 1e-1))
     )
-
     gp = GaussianProcessRegressor(
         kernel=kernel,
         n_restarts_optimizer=0,
         normalize_y=True,
         random_state=RANDOM_SEED,
     )
-
-    logger.info(f"Training GP on {len(X_train)} points with {len(FEATURES)} features...")
+    logger.info(f"Training GP on {len(X_train_s)} points with {len(FEATURES)} features...")
     gp.fit(X_train_s, y_train)
     logger.info(f"Optimised kernel: {gp.kernel_}")
+    return gp
 
-    # Validation
+
+def evaluate_gp(gp: GaussianProcessRegressor, X_test_s: np.ndarray, y_test: np.ndarray) -> dict:
+    """Pure computation of held-out validation metrics. No I/O, no gating decision."""
     y_pred, y_std = gp.predict(X_test_s, return_std=True)
-    r2   = r2_score(y_test, y_pred)
-    mae  = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(np.mean((y_test - y_pred) ** 2))
+    return {
+        "r2": float(r2), "mae": float(mae), "rmse": float(rmse),
+        "y_pred": y_pred, "y_std": y_std,
+    }
 
-    logger.info(f"Test R²   = {r2:.4f}  (target ≥ 0.99)")
-    logger.info(f"Test MAE  = {mae:.1f} kWh/year")
-    logger.info(f"Test RMSE = {rmse:.1f} kWh/year")
 
-    if r2 < 0.99:
-        logger.warning(
-            f"R² = {r2:.4f} < 0.99 — emulator does not meet acceptance threshold.\n"
+def check_acceptance(r2: float, threshold: float = config.GP_ACCEPTANCE_R2) -> None:
+    """Hard-fail the build if the emulator misses the acceptance threshold.
+
+    Raises:
+        ValueError: if r2 < threshold. A warning here previously let a
+        sub-standard emulator silently flow into the national inference run.
+    """
+    if r2 < threshold:
+        raise ValueError(
+            f"R² = {r2:.4f} < {threshold} — emulator does not meet acceptance threshold. "
             "Options: increase N_SAMPLES in 10a_lhs_sampler.py, or check EnergyPlus run quality."
         )
-    else:
-        logger.info("✓ Acceptance criterion met (R² ≥ 0.99).")
+    logger.info(f"✓ Acceptance criterion met (R² = {r2:.4f} ≥ {threshold}).")
 
-    # Save stats
+
+def train_gp(df: pd.DataFrame):
+    X_train_s, X_test_s, X_test, y_train, y_test, scaler = prepare_train_test_data(df)
+    gp = fit_gp_model(X_train_s, y_train)
+    metrics = evaluate_gp(gp, X_test_s, y_test)
+
+    logger.info(f"Test R²   = {metrics['r2']:.4f}  (target ≥ {config.GP_ACCEPTANCE_R2})")
+    logger.info(f"Test MAE  = {metrics['mae']:.1f} kWh/year")
+    logger.info(f"Test RMSE = {metrics['rmse']:.1f} kWh/year")
+    check_acceptance(metrics["r2"])
+
     stats = {
-        "r2": float(r2),
-        "mae_kwh_year": float(mae),
-        "rmse_kwh_year": float(rmse),
-        "n_train": int(len(X_train)),
-        "n_test":  int(len(X_test)),
-        "kernel":  str(gp.kernel_),
-        "acceptance_met": bool(r2 >= 0.99),
+        "r2": metrics["r2"],
+        "mae_kwh_year": metrics["mae"],
+        "rmse_kwh_year": metrics["rmse"],
+        "n_train": int(len(X_train_s)),
+        "n_test": int(len(X_test_s)),
+        "kernel": str(gp.kernel_),
+        "acceptance_met": bool(metrics["r2"] >= config.GP_ACCEPTANCE_R2),
     }
     with open(STATS_PATH, "w") as f:
         json.dump(stats, f, indent=2)
     logger.info(f"Stats saved → {STATS_PATH}")
 
-    return gp, scaler, X_test, y_test, y_pred, y_std, stats
+    return gp, scaler, X_test, y_test, metrics["y_pred"], metrics["y_std"], stats
 
 
 def plot_validation(y_test, y_pred, y_std, r2):
@@ -199,8 +227,7 @@ def save_model(gp, scaler):
 # ---------------------------------------------------------------------------
 def validate_saved():
     if not MODEL_PATH.exists():
-        logger.error(f"No saved model at {MODEL_PATH}. Train first.")
-        return
+        raise FileNotFoundError(f"No saved model at {MODEL_PATH}. Train first.")
     payload = joblib.load(MODEL_PATH)
     gp, scaler = payload["gp"], payload["scaler"]
 

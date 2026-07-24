@@ -30,13 +30,18 @@ for msoa in msoas_conv:
 conv_text = '\n'.join(conv_lines)
 
 # 2. Generate Posterior Rows (First 800)
-res = pd.read_csv(os.path.join(processed_dir, 'national_bayesian_results.csv'))
+# Real exact-NUTS posterior summaries (mean, SD, 95% empirical CI) for the RSR-projected
+# spatial effect omega_star, computed directly from national_unified_trace.nc by
+# src.utils.compute_spatial_effect_summary. No calibration multiplier is applied: these
+# are exact NUTS draws, not ADVI approximations, so no variance correction is needed.
+res = pd.read_csv(os.path.join(processed_dir, 'msoa_spatial_effect_summary.csv'))
 subset = res.head(800).copy()
 post_lines = []
 for _, row in subset.iterrows():
-    sd_c = row['msoa_effect_sd'] * 3.17
-    low, high = row['msoa_effect_mean'] - 1.96*sd_c, row['msoa_effect_mean'] + 1.96*sd_c
-    post_lines.append(f"{row['msoa21cd']} & {row['msoa_effect_mean']:.4f} & {sd_c:.4f} & {low:.4f} & {high:.4f} \\\\")
+    post_lines.append(
+        f"{row['msoa21cd']} & {row['effect_mean']:.4f} & {row['effect_sd']:.4f} & "
+        f"{row['effect_ci_2.5']:.4f} & {row['effect_ci_97.5']:.4f} \\\\"
+    )
 
 post_text = '\n'.join(post_lines)
 
@@ -182,24 +187,26 @@ traditional Besag models by ensuring that the two random effects
 well-defined \cite{Morris2019, Riebler2016}.
 
 \newpage
-\section{ADVI vs. NUTS Calibration}
+\section{Cross-Typology Validation of the National Fit}
 
-Given the computational intractability of full HMC/NUTS across a 6,840-node 
-spatial graph, the national model was estimated using Automatic 
-Differentiation Variational Inference (ADVI). NUTS was utilized exclusively 
-on a 353-MSOA subset (Greater Manchester) to derive the 3.17x calibration 
-multiplier applied to the national ADVI posterior standard deviations.
+The national model is estimated using the exact No-U-Turn Sampler (NUTS)
+across the full 6,853-node spatial graph; no variational approximation or
+post-hoc variance correction is used in the reported results. As an
+independent check, we additionally re-fit the exact model on three regional
+subgraphs (Urban/London, Suburban/North West, Rural/South West; 150 MSOAs
+each) and compare the recovered decoupled thermal index $T^*$ against the
+national fit for the same neighborhoods.
 
-Figure \ref{fig:calibration} illustrates the systematic underestimation of 
-posterior standard deviations by the ADVI solver compared to full Hamiltonian 
-Monte Carlo (NUTS) results on the subset. The calibration multiplier $M = 3.17$ 
-is derived from the linear gradient of this relationship.
+Figure \ref{fig:validation} shows this cross-typology comparison. Agreement
+along the identity line indicates the national-scale fit is consistent with
+independently-refit regional subgraphs across urban, suburban, and rural
+building-stock typologies.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.8\linewidth]{figures/calibration_plot.png}
-\caption{Comparison of posterior standard deviations for MSOA spatial effects ($\phi_m$) recovered via ADVI and NUTS on the Greater Manchester subset.}
-\label{fig:calibration}
+\includegraphics[width=0.8\linewidth]{figures/cross_typology_validation.png}
+\caption{Cross-typology validation: national exact-NUTS $T^*$ vs. independently re-fit exact-NUTS $T^*$ on Urban, Suburban, and Rural regional subgraphs (150 MSOAs each).}
+\label{fig:validation}
 \end{figure}
 
 \newpage
@@ -246,19 +253,22 @@ Research Service.
 \newpage
 \section{Full MSOA Spatial Effects (National Run)}
 
-Table \ref{tab:supp_post_phi} provides the posterior summaries for the first 
-800 MSOAs in the national run. These effects represent the 
-behaviorally-adjusted structural signature of each neighborhood.
+Table \ref{tab:supp_post_phi} provides the exact-NUTS posterior summaries for
+the first 800 MSOAs in the national run: the RSR-projected spatial effect
+$\omega^*_m$ (empirical posterior mean, SD, and 95\% credible interval across
+8,000 post-warmup draws), which represents the behaviorally-adjusted
+structural signature of each neighborhood. No calibration multiplier is
+applied.
 
 \begin{longtable}{lrrrr}
-\caption{Posterior summaries for MSOA spatial effects ($\phi_m + \theta_m$) with 3.17x ADVI-NUTS calibration. (First 800 MSOAs).} \label{tab:supp_post_phi} \\
+\caption{Posterior summaries for the RSR-projected MSOA spatial effect ($\omega^*_m$), exact NUTS, 8,000 draws. (First 800 MSOAs).} \label{tab:supp_post_phi} \\
 \toprule
-MSOA Code & Mean & SD (Calib) & 2.5\% CI & 97.5\% CI \\
+MSOA Code & Mean & SD & 2.5\% CI & 97.5\% CI \\
 \midrule
 \endfirsthead
 \multicolumn{5}{c}{{\bfseries \tablename\ \thetable{} -- continued from previous page}} \\
 \toprule
-MSOA Code & Mean & SD (Calib) & 2.5\% CI & 97.5\% CI \\
+MSOA Code & Mean & SD & 2.5\% CI & 97.5\% CI \\
 \midrule
 \endhead
 \midrule

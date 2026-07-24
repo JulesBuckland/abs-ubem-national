@@ -2,7 +2,10 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.inference.gp_emulator import load_data, train_gp, plot_validation, save_model, validate_saved, main
+from src.inference.gp_emulator import (
+    load_data, train_gp, plot_validation, save_model, validate_saved, main,
+    evaluate_gp, check_acceptance,
+)
 import src.inference.gp_emulator as gp_emulator
 
 @patch('src.inference.gp_emulator.COMBINED_CSV')
@@ -92,6 +95,52 @@ def test_validate_saved(mock_open, mock_load_data, mock_load, mock_stats_path, m
     
     with patch('src.inference.gp_emulator.json.load', return_value={"r2": 0.99}):
         validate_saved()
+
+@patch('src.inference.gp_emulator.MODEL_PATH')
+def test_validate_saved_missing_model_raises(mock_model_path):
+    """A missing saved model must raise, not silently return: the pipeline
+    audit flagged this exact silent-skip pattern as a way for a broken
+    validation stage to vanish with no error."""
+    mock_model_path.exists.return_value = False
+    with pytest.raises(FileNotFoundError, match="No saved model"):
+        validate_saved()
+
+
+def test_evaluate_gp_matches_hand_computed_metrics():
+    """y_test=[10,20,30], y_pred=[12,18,33].
+    residuals = pred-test = [2,-2,3]
+    MAE  = mean(|2|,|2|,|3|) = 7/3 = 2.3333...
+    RMSE = sqrt(mean(4,4,9)) = sqrt(17/3) = sqrt(5.6667) = 2.38048...
+    R2   = 1 - SS_res/SS_tot
+           SS_res = 4+4+9 = 17
+           mean(y_test) = 20; SS_tot = (10-20)^2+(20-20)^2+(30-20)^2 = 100+0+100 = 200
+           R2 = 1 - 17/200 = 0.915
+    """
+    y_test = np.array([10.0, 20.0, 30.0])
+
+    class FakeGP:
+        def predict(self, X, return_std=True):
+            return np.array([12.0, 18.0, 33.0]), np.array([0.5, 0.5, 0.5])
+
+    metrics = evaluate_gp(FakeGP(), X_test_s=np.zeros((3, 1)), y_test=y_test)
+
+    assert metrics["r2"] == pytest.approx(0.915, abs=1e-9)
+    assert metrics["mae"] == pytest.approx(7 / 3, abs=1e-9)
+    assert metrics["rmse"] == pytest.approx((17 / 3) ** 0.5, abs=1e-9)
+    np.testing.assert_array_equal(metrics["y_pred"], [12.0, 18.0, 33.0])
+    np.testing.assert_array_equal(metrics["y_std"], [0.5, 0.5, 0.5])
+
+
+def test_check_acceptance_passes_above_threshold():
+    check_acceptance(0.995, threshold=0.99)  # must not raise
+
+
+def test_check_acceptance_raises_below_threshold():
+    # Threshold passed explicitly so this doesn't depend on TEST_MODE's
+    # environment-dependent default (see settings.GP_ACCEPTANCE_R2).
+    with pytest.raises(ValueError, match=r"R² = 0.9000 < 0.99"):
+        check_acceptance(0.90, threshold=0.99)
+
 
 @patch('src.inference.gp_emulator.validate_saved')
 def test_main_validate(mock_validate):
