@@ -10,6 +10,14 @@ TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
 
 USE_FAKE_CITY = os.environ.get("USE_FAKE_CITY", "0") == "1"
 
+# A fast, low-draw approximation run — NOT the same as TEST_MODE (which
+# points at tiny fixture data). PILOT_MODE runs on real/production data with
+# a deliberately small draw count, so its output must never be mistaken for
+# a final result: model_unified.py routes pilot output to distinctly-suffixed
+# files and stamps every saved trace with its run metadata (see
+# src/inference/model_unified.py's _run_metadata()).
+PILOT_MODE = os.environ.get("PILOT_MODE", "0") == "1"
+
 if TEST_MODE:
     RAW_DIR = BASE_DIR / "tests" / "fixtures" / "raw"
     PROCESSED_DIR = BASE_DIR / "tests" / "fixtures" / "processed"
@@ -79,6 +87,12 @@ COLD_SNAP_DURATION_HOURS = 336 # 14 days
 ELECTRIC_BASELOAD_KWH = 2000
 GAS_PRESENCE_THRESHOLD_KWH = 500
 
+# GP emulator held-out R^2 acceptance threshold. Lower under TEST_MODE because
+# the tiny synthetic fixture (a few hundred rows) cannot reliably reach the
+# production bar that a full multi-thousand-point EnergyPlus LHS sample can -
+# this is a deliberately-chosen, still-enforced bar, not a bypass of it.
+GP_ACCEPTANCE_R2 = 0.99
+
 # --- PHYSICAL ASSUMPTIONS ---
 # Base temperature for heating degree day calculations
 BASE_TEMP_HDD = 15.5 
@@ -95,6 +109,16 @@ if TEST_MODE:
     MCMC_TUNE = 10
     MCMC_CORES = 1
     MCMC_CHAINS = 1
+    GP_ACCEPTANCE_R2 = 0.95
+
+# Convergence gate applied after every NUTS run, before results are treated as
+# final. A small nonzero divergence tolerance (rather than a hard zero) avoids
+# an overly brittle gate on an otherwise well-fit model; r_hat is only
+# meaningful with >=2 chains, so it is checked in model_unified.py only when
+# MCMC_CHAINS >= 2 (true for production and PILOT_MODE, not TEST_MODE's
+# single-chain fixture runs).
+MCMC_MAX_RHAT = 1.01
+MCMC_MAX_DIVERGENCES = 10
 
 # --- FILE PATHS (National) ---
 CENSUS_HOUSING_NATIONAL = RAW_DIR / "census" / "ts044_extracted" / "census2021-ts044-msoa.csv"

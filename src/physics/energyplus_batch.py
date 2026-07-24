@@ -116,7 +116,7 @@ def generate_task_from_row(row: pd.Series, resume: bool) -> Dict[str, Any]:
             .replace("+", "plus"))
     run_id = f"{slug}_s{int(row['sample_id']):04d}"
     
-    task = {
+    return {
         "run_id":        run_id,
         "archetype":     row["archetype"],
         "property_type": row["property_type"],
@@ -130,12 +130,9 @@ def generate_task_from_row(row: pd.Series, resume: bool) -> Dict[str, Any]:
         "exposed_walls": int(row["exposed_walls"]),
         "sample_id":     int(row["sample_id"]),
         "resume":        resume,
+        **({"city": row["city"]} if "city" in row else {}),
+        **({"hdd": float(row["hdd"])} if "hdd" in row else {}),
     }
-    if "city" in row:
-        task["city"] = row["city"]
-    if "hdd" in row:
-        task["hdd"] = float(row["hdd"])
-    return task
 
 def generate_tasks_from_df(df: pd.DataFrame, resume: bool) -> List[Dict[str, Any]]:
     """Pure function returning a new list of tasks."""

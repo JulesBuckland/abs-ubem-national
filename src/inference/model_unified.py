@@ -14,8 +14,9 @@ except ImportError:
     psutil = None
 
 from src.config.settings import (
-    PROCESSED_DIR, RAW_DIR, 
+    PROCESSED_DIR, RAW_DIR,
     MCMC_SAMPLES, MCMC_TUNE, MCMC_CORES, MCMC_CHAINS,
+    MCMC_MAX_RHAT, MCMC_MAX_DIVERGENCES, PILOT_MODE,
     RANDOM_SEED, setup_logging
 )
 
@@ -24,6 +25,31 @@ GP_MODEL_PATH = PROCESSED_DIR / "gp_emulator.pkl"
 GP_FEATURES = ["floor_area", "wall_u", "ach", "wwr", "form_code", "hdd"]
 
 logger = setup_logging("BayesianUnifiedNational")
+
+
+def _run_metadata(mode: str, draws: int, tune: int, chains: int) -> dict:
+    """Provenance stamp attached to every saved trace/results file, so no
+    output file's origin (pilot vs final, code version, when) is ever
+    ambiguous. A run in PILOT_MODE writes to distinctly-suffixed files (see
+    run_national_unified_model) rather than overwriting the final ones, but
+    this stamp is the authoritative record either way.
+    """
+    import subprocess
+    import datetime
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=RAW_DIR.parent.parent, text=True
+        ).strip()
+    except Exception:
+        git_commit = "unknown"
+    return {
+        "mode": mode,
+        "draws": draws,
+        "tune": tune,
+        "chains": chains,
+        "git_commit": git_commit,
+        "generated_at_utc": datetime.datetime.utcnow().isoformat(),
+    }
 
 def log_memory(stage_name: str) -> None:
     """Logs the current memory usage of the process.
@@ -59,6 +85,92 @@ def _use_csv_baseline(df: pd.DataFrame) -> pd.DataFrame:
     if merged["theoretical_gas_kwh"].isna().any():
         raise ValueError("FATAL: Failed to map CSV baseline to some archetypes! Missing values found.")
     return df.assign(theoretical_gas_kwh=merged["theoretical_gas_kwh"].values)
+
+
+def build_unified_model(
+    N: int,
+    node1: np.ndarray,
+    node2: np.ndarray,
+    T_var: np.ndarray,
+    income_z: np.ndarray,
+    theory_log: np.ndarray,
+    y_obs: np.ndarray,
+    icar_scaling_factor: float,
+    zt_z_inv_scalar: float,
+) -> pm.Model:
+    """Build (but do not sample) the unified national Bayesian spatial model.
+
+    Spatial prior matches pm.ICAR's own logp exactly (pairwise_difference +
+    soft zero_sum — see pm.ICAR.dist's logp source) via a sparse edge-list
+    formulation (O(E) memory, not the O(N^2)/374MB dense W matrix a direct
+    pm.ICAR(W=...) call would require at national scale). Critically this is
+    a Flat base + explicit soft zero-sum Potential, NOT an independent
+    per-node Normal(0,1) prior — that used to be a real bug here: an
+    independent per-node prior competes with the pairwise penalty
+    component-wise instead of only constraining the gauge-fixing sum,
+    corrupting identifiability of `rho`. The BYM2 geometric-mean scaling
+    factor (icar_scaling_factor, from icar_scaling.compute_icar_scaling_factor)
+    is applied on top so `rho` is interpretable as the true spatial-vs-
+    unstructured variance split (Riebler et al. 2016 / Simpson et al. 2017).
+
+    Args:
+        N: number of MSOA nodes.
+        node1, node2: 1D edge-list arrays (0-indexed), one entry per edge.
+        T_var: within-MSOA log-variance used for the Jensen's correction.
+        income_z: standardized income deprivation score per MSOA.
+        theory_log: log of the physics-based theoretical baseline per MSOA.
+        y_obs: log of the observed empirical thermal energy per MSOA.
+        icar_scaling_factor: BYM2 scaling factor for this graph.
+        zt_z_inv_scalar: precomputed (Z'Z)^-1 scalar for the RSR projection.
+
+    Returns:
+        The unsampled pm.Model.
+    """
+    with pm.Model() as unified_model:
+        # Pure Physics Bias
+        beta_th = pm.Normal("beta_th", mu=-0.3, sigma=0.1)
+
+        # Socioeconomic Rationing Elasticity
+        beta_inc = pm.Normal("beta_inc", mu=0.0, sigma=0.5)
+
+        # Spatial Components (BYM2)
+        rho = pm.Beta("rho", alpha=1.0, beta=1.0)
+        sigma_spatial = pm.HalfNormal("sigma_spatial", sigma=0.5)
+
+        phi_raw = pm.Flat("phi_raw", shape=N)
+        pm.Potential("icar_penalty", -0.5 * pm.math.sum((phi_raw[node1] - phi_raw[node2]) ** 2))
+        zero_sum_stdev = 0.001
+        pm.Potential(
+            "icar_zerosum",
+            -0.5 * pt.pow(pt.sum(phi_raw) / (zero_sum_stdev * N), 2)
+            - pt.log(pt.sqrt(2.0 * np.pi))
+            - pt.log(zero_sum_stdev * N),
+        )
+        phi = pm.Deterministic("phi", phi_raw / np.sqrt(icar_scaling_factor))
+
+        # Unstructured spatial noise
+        theta_raw = pm.Normal("theta_raw", mu=0.0, sigma=1.0, shape=N)
+        theta = pm.Deterministic("theta", theta_raw - pm.math.mean(theta_raw))
+
+        # The mixture
+        omega = sigma_spatial * (pm.math.sqrt(1 - rho) * theta + pm.math.sqrt(rho) * phi)
+
+        # Apply Restricted Spatial Regression (RSR) Projection to the spatial effect
+        # This prevents omega from stealing variance from income_z
+        # O(N) algebraic optimization: omega_star = omega - Z * (Z'Z)^-1 * (Z' omega)
+        Z_tensor = pt.as_tensor_variable(income_z)
+        Zt_omega = pt.sum(Z_tensor * omega)
+        projection = Z_tensor * (zt_z_inv_scalar * Zt_omega)
+        omega_star = omega - projection
+
+        # Unified Structural Mean with Variance Correction
+        mu = theory_log - (T_var / 2.0) + beta_th + beta_inc * income_z + omega_star
+
+        # 5. Likelihood
+        sigma_err = pm.HalfNormal("sigma_err", sigma=0.5)
+        pm.Normal("y", mu=mu, sigma=sigma_err, observed=y_obs)
+
+    return unified_model
 
 
 def run_national_unified_model() -> az.InferenceData:
@@ -244,7 +356,14 @@ def run_national_unified_model() -> az.InferenceData:
     # Ensure node1 and node2 only contain valid indices
     assert np.all((node1 >= 0) & (node1 < len(msoa_stats))), "FATAL: node1 contains out-of-bounds indices"
     assert np.all((node2 >= 0) & (node2 < len(msoa_stats))), "FATAL: node2 contains out-of-bounds indices"
-    
+
+    # BYM2 geometric-mean scaling factor (Riebler et al. 2016 / Simpson et al. 2017),
+    # computed once from the graph structure alone — a plain numpy/scipy computation,
+    # not a PyMC operation, so it happens before the model context below.
+    from src.inference.icar_scaling import compute_icar_scaling_factor
+    icar_scaling_factor = compute_icar_scaling_factor(node1, node2, len(msoa_stats))
+    logger.info(f"ICAR BYM2 scaling factor: {icar_scaling_factor:.4f}")
+
     T_var = msoa_stats['T_var'].values
     
     # Z_inc standardization
@@ -263,114 +382,113 @@ def run_national_unified_model() -> az.InferenceData:
     log_memory("RSR Orthogonal Projection Created")
     
     # 4. Bayesian Model Definition
-    with pm.Model() as unified_model:
-        # Pure Physics Bias
-        beta_th = pm.Normal("beta_th", mu=-0.3, sigma=0.1)
-        
-        # Socioeconomic Rationing Elasticity
-        beta_inc = pm.Normal("beta_inc", mu=0.0, sigma=0.5)
-        
-        # Spatial Components (BYM2)
-        rho = pm.Beta("rho", alpha=1.0, beta=1.0)
-        sigma_spatial = pm.HalfNormal("sigma_spatial", sigma=0.5)
-        
-        # ICAR term via SPARSE edge-list formulation (O(E) memory, not O(N²))
-        # Mathematically identical to pm.ICAR but avoids the 374MB dense matrix.
-        N = len(msoa_stats)
-        n_edges = len(node1)
-        
-        phi_raw = pm.Normal("phi_raw", 0, 1, shape=N)
-        
-        # Zero-mean centering (same as before)
-        phi = pm.Deterministic("phi", phi_raw - pm.math.mean(phi_raw))
-        pm.Potential("icar_penalty", -0.5 * pm.math.sum((phi[node1] - phi[node2])**2))
-        
-        # Unstructured spatial noise
-        theta_raw = pm.Normal("theta_raw", mu=0.0, sigma=1.0, shape=N)
-        theta = pm.Deterministic("theta", theta_raw - pm.math.mean(theta_raw))
-        
-        # The mixture
-        omega = sigma_spatial * (pm.math.sqrt(1 - rho) * theta + pm.math.sqrt(rho) * phi)
-        
-        # Apply Restricted Spatial Regression (RSR) Projection to the spatial effect
-        # This prevents omega from stealing variance from income_z
-        # O(N) algebraic optimization: omega_star = omega - Z * (Z'Z)^-1 * (Z' omega)
-        Z_tensor = pt.as_tensor_variable(Z[:, 0])
-        Zt_omega = pt.sum(Z_tensor * omega)
-        projection = Z_tensor * (Zt_Z_inv_scalar * Zt_omega)
-        omega_star = omega - projection
-        
-        # Unified Structural Mean with Variance Correction
-        mu = theory_log - (T_var / 2.0) + beta_th + beta_inc * income_z + omega_star
-        
-        # 5. Likelihood
-        sigma_err = pm.HalfNormal("sigma_err", sigma=0.5)
-        
-        y = pm.Normal("y", mu=mu, sigma=sigma_err, observed=y_obs)
-        
-        # Inference
-        logger.info("Starting Sampler...")
-        log_memory("Pre-NUTS Memory Peak")
-        
-        # Determine run mode: PILOT_MODE controls MCMC draws independently of data subsetting
-        is_pilot = os.environ.get("PILOT_MODE") == "1"
-        
-        draws = 10 if is_pilot else MCMC_SAMPLES
-        tune = 10 if is_pilot else MCMC_TUNE
-        chains = 2 if is_pilot else MCMC_CHAINS
-        # Sparse implementation still requires sequential execution (cores=1) to stay within 8GB RAM limit
-        cores = 1
-        
+    N = len(msoa_stats)
+    n_edges = len(node1)
+    unified_model = build_unified_model(
+        N=N, node1=node1, node2=node2, T_var=T_var, income_z=income_z,
+        theory_log=theory_log, y_obs=y_obs,
+        icar_scaling_factor=icar_scaling_factor, zt_z_inv_scalar=Zt_Z_inv_scalar,
+    )
+
+    # Determine run mode: PILOT_MODE controls MCMC draws independently of data subsetting.
+    # Pilot output is routed to distinctly-suffixed files (never overwrites the
+    # final national result) and every saved trace carries a metadata stamp
+    # (see _run_metadata) recording which mode produced it.
+    is_pilot = PILOT_MODE
+
+    draws = 10 if is_pilot else MCMC_SAMPLES
+    tune = 10 if is_pilot else MCMC_TUNE
+    chains = 2 if is_pilot else MCMC_CHAINS
+    # Sparse implementation still requires sequential execution (cores=1) to stay within 8GB RAM limit
+    cores = 1
+
     # --- Sampling: PyMC NUTS with sequential chains for 8GB RAM ---
     with unified_model:
         sample_kwargs = {
-            "draws": draws, "tune": tune, 
-            "chains": chains, "cores": cores, 
-            "random_seed": RANDOM_SEED, "target_accept": 0.99
+            "draws": draws, "tune": tune,
+            "chains": chains, "cores": cores,
+            "random_seed": RANDOM_SEED, "target_accept": 0.99,
+            # rich's live progress bar writes Unicode (e.g. U+2009 thin space)
+            # that crashes under Windows' legacy cp1252 console encoding
+            # (UnicodeEncodeError from rich._win32_console) - logger.info calls
+            # already report progress, so the bar is disabled rather than relied on.
+            "progressbar": False,
         }
         logger.info(f"Sampling with PyMC NUTS: {draws} draws, {tune} tune, {chains} chains, {cores} cores")
         trace = pm.sample(**sample_kwargs)
-        
-    logger.info("Model fitted successfully! Saving Trace FIRST...")
-    trace_path = PROCESSED_DIR / "national_unified_trace.nc"
-    if trace_path.exists():
-        trace_path.unlink(missing_ok=True) # Idempotency: Overwrite cleanly
-    trace.to_netcdf(trace_path)
+
+    # --- Convergence gate: refuse to persist anything as a result until the
+    # fit is verified, not just logged (a warning here previously let
+    # unconverged output flow straight into the manuscript). ---
+    n_divergences = int(trace.sample_stats["diverging"].sum())
+    logger.info(f"Convergence check: {n_divergences} divergences (max allowed {MCMC_MAX_DIVERGENCES}).")
+    if n_divergences > MCMC_MAX_DIVERGENCES:
+        raise RuntimeError(
+            f"FATAL: {n_divergences} divergences exceeds the allowed maximum of "
+            f"{MCMC_MAX_DIVERGENCES}. Refusing to save results as converged."
+        )
+    # round_to="none" keeps ess_bulk/ess_tail/r_hat as real floats. Without it,
+    # this arviz version (1.2.0) returns display-rounded *strings* for every
+    # numeric column, which silently breaks both the f"{max_r_hat:.4f}" format
+    # below and the >= MCMC_MAX_RHAT comparison (string vs float).
+    summary = az.summary(trace, round_to="none")
+    if chains >= 2:
+        max_r_hat = summary["r_hat"].max()
+        logger.info(f"Convergence check: max r_hat={max_r_hat:.4f} (max allowed {MCMC_MAX_RHAT}).")
+        if max_r_hat >= MCMC_MAX_RHAT:
+            raise RuntimeError(
+                f"FATAL: max r_hat={max_r_hat:.4f} exceeds the allowed maximum of "
+                f"{MCMC_MAX_RHAT}. Refusing to save results as converged."
+            )
+    else:
+        logger.warning(
+            f"Only {chains} chain(s) sampled — r_hat is not meaningful with a single "
+            "chain, so it was not gated (divergence check above still applies)."
+        )
 
     logger.info("Computing Log Likelihood...")
     with unified_model:
         pm.compute_log_likelihood(trace)
-    
-    logger.info("Computing WAIC...")
-    import arviz as az
+
+    trace.attrs.update(_run_metadata(mode="pilot" if is_pilot else "final", draws=draws, tune=tune, chains=chains))
+
+    suffix = "_pilot" if is_pilot else ""
+    logger.info("Model fitted and converged. Saving Trace...")
+    trace_path = PROCESSED_DIR / f"national_unified_trace{suffix}.nc"
+    if trace_path.exists():
+        trace_path.unlink(missing_ok=True) # Idempotency: Overwrite cleanly
+    trace.to_netcdf(trace_path)
+
+    logger.info("Computing PSIS-LOO...")
     try:
-        waic_result = az.waic(trace)
-        waic_str = str(waic_result)
-    except AttributeError:
-        waic_str = "WAIC not available in this ArviZ version."
-    
-    summary = az.summary(trace)
-    
-    with open(PROCESSED_DIR / "nuts_waic.txt", "w") as f:
-        f.write("--- WAIC ---\n")
-        f.write(waic_str + "\n\n")
+        loo_result = az.loo(trace, pointwise=True)
+        loo_str = str(loo_result)
+        high_k = int((loo_result.pareto_k.values > 0.7).sum()) if hasattr(loo_result, "pareto_k") else 0
+    except Exception as e:
+        loo_str = f"LOO computation failed: {e}"
+        high_k = 0
+
+    with open(PROCESSED_DIR / f"nuts_loo{suffix}.txt", "w") as f:
+        f.write("--- PSIS-LOO ---\n")
+        f.write(loo_str + "\n\n")
+        f.write(f"MSOAs with Pareto k > 0.7 (unreliable LOO estimate): {high_k}\n\n")
         f.write("--- DIAGNOSTICS ---\n")
         f.write(str(summary[['ess_bulk', 'ess_tail', 'r_hat']]) + "\n")
 
     # 6. Extract Output and Compute True Decoupled T*
     # We extract the posterior means
     b_inc_mean = trace.posterior['beta_inc'].mean().item()
-    
+
     # Partial Residualization: We ONLY subtract behavioral rationing. We KEEP omega_star (unobserved physics)
     # T*_m = exp( log(y_m) - beta_inc * (Z - Z_ref) )
     # Let Z_ref = 0 (average income)
     T_star = np.exp(y_obs - b_inc_mean * income_z)
-    
+
     msoa_stats = msoa_stats.assign(T_star_kwh=T_star)
-    msoa_stats.to_csv(PROCESSED_DIR / "msoa_unified_results.csv", index=False)
-    logger.info("Saved true empirically decoupled T* results.")
+    msoa_stats.to_csv(PROCESSED_DIR / f"msoa_unified_results{suffix}.csv", index=False)
+    logger.info(f"Saved true empirically decoupled T* results (mode={'pilot' if is_pilot else 'final'}).")
     log_memory("Final Exit")
-    
+
     return trace
 
 if __name__ == "__main__":

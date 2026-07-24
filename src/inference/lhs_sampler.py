@@ -97,33 +97,31 @@ def generate_archetype_lhs(archetype: str, property_type: str, age_band: str,
     raw = sampler.random(n=N_SAMPLES)
     X = scale(raw, l_bounds=lo, u_bounds=hi)
 
-    df = pd.DataFrame(X, columns=["floor_area", "wall_u", "ach", "wwr"])
-    df["form_code"]      = form["form_code"]
-    df["exposed_walls"]  = form["exposed_walls"]
-    df["floors"]         = form["floors"]
-    df["age_band"]       = age_band
-    df["property_type"]  = property_type
-    df["archetype"]      = archetype
-    df["area_nominal"]   = area_nominal
-    df["wall_u_nominal"] = wall_u_nom
-    df["ach_nominal"]    = ach_nom
-    df["wwr_nominal"]    = wwr_nom
-    df["sample_id"]      = np.arange(N_SAMPLES)
-
-    # Assign a random city for multi-climate analysis
-    cities = list(REGIONAL_CENTERS.keys())
-    
     # Calculate HDDs dynamically from EPW files
     import sys
     from pathlib import Path
     sys.path.append(str(Path(__file__).resolve().parent.parent))
     from src.utils.epw_parser import get_regional_hdd_map
+    cities = list(REGIONAL_CENTERS.keys())
     physics_dir = RAW_DIR / "physics"
     regional_hdd = get_regional_hdd_map(physics_dir, cities)
 
-    # Use the sample_id to deterministically but evenly distribute cities
-    df["city"] = [cities[i % len(cities)] for i in df["sample_id"]]
-    df["hdd"] = df["city"].apply(lambda c: regional_hdd[c])
+    df = pd.DataFrame(X, columns=["floor_area", "wall_u", "ach", "wwr"]).assign(
+        form_code=form["form_code"],
+        exposed_walls=form["exposed_walls"],
+        floors=form["floors"],
+        age_band=age_band,
+        property_type=property_type,
+        archetype=archetype,
+        area_nominal=area_nominal,
+        wall_u_nominal=wall_u_nom,
+        ach_nominal=ach_nom,
+        wwr_nominal=wwr_nom,
+        sample_id=np.arange(N_SAMPLES),
+        # Use the sample_id to deterministically but evenly distribute cities
+        city=lambda d: [cities[i % len(cities)] for i in d["sample_id"]],
+        hdd=lambda d: d["city"].apply(lambda c: regional_hdd[c]),
+    )
 
     return df
 

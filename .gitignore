@@ -1,10 +1,19 @@
 # Data and outputs
 data/
-tests/fixtures/
+# tests/fixtures/* (not tests/fixtures/) so the golden-baseline negation below
+# actually works: git cannot re-include anything inside a directory excluded
+# by a plain "dir/" pattern, only inside one excluded via "dir/*".
+tests/fixtures/*
 outputs/
 *.parquet
 *.nc
 *.pkl
+
+# Golden-test baselines are the exception: they must be committed and persist
+# across CI runs, or test_golden.py silently creates a fresh baseline every
+# run instead of ever comparing against one.
+!tests/fixtures/golden/
+!tests/fixtures/golden/**
 
 # Python
 __pycache__/
