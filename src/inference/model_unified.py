@@ -64,6 +64,38 @@ def log_memory(stage_name: str) -> None:
     else:
         logger.info(f"[RAM USAGE - {stage_name}]: (psutil not installed, cannot track RAM)")
 
+def summarize_divergent_draws(trace, param_names: list) -> dict:
+    """Pure summary of scalar posterior parameters, split by whether their draw
+    diverged, to diagnose *why* NUTS is diverging (e.g. concentrated at a `rho`
+    boundary, or an extreme `sigma`) without changing the convergence gate's
+    pass/fail decision at all — this is diagnostic-only, called from the
+    failure branch right before the existing RuntimeError is raised.
+    """
+    diverging = trace.sample_stats["diverging"].values.astype(bool)
+    result = {}
+    for name in param_names:
+        values = trace.posterior[name].values
+        div_vals = values[diverging]
+        nondiv_vals = values[~diverging]
+        result[name] = {
+            "diverging": {
+                "n": int(div_vals.size),
+                "mean": float(np.mean(div_vals)) if div_vals.size else None,
+                "std": float(np.std(div_vals)) if div_vals.size else None,
+                "min": float(np.min(div_vals)) if div_vals.size else None,
+                "max": float(np.max(div_vals)) if div_vals.size else None,
+            },
+            "non_diverging": {
+                "n": int(nondiv_vals.size),
+                "mean": float(np.mean(nondiv_vals)) if nondiv_vals.size else None,
+                "std": float(np.std(nondiv_vals)) if nondiv_vals.size else None,
+                "min": float(np.min(nondiv_vals)) if nondiv_vals.size else None,
+                "max": float(np.max(nondiv_vals)) if nondiv_vals.size else None,
+            },
+        }
+    return result
+
+
 def _use_csv_baseline(df: pd.DataFrame) -> pd.DataFrame:
     """Fallback: merge theoretical_gas_kwh from the analytical CSV baseline.
 
@@ -97,6 +129,10 @@ def build_unified_model(
     y_obs: np.ndarray,
     icar_scaling_factor: float,
     zt_z_inv_scalar: float,
+    rho_alpha: float = 1.0,
+    rho_beta: float = 1.0,
+    sigma_spatial_prior_sigma: float = 0.5,
+    sigma_err_prior_sigma: float = 0.5,
 ) -> pm.Model:
     """Build (but do not sample) the unified national Bayesian spatial model.
 
@@ -122,6 +158,18 @@ def build_unified_model(
         y_obs: log of the observed empirical thermal energy per MSOA.
         icar_scaling_factor: BYM2 scaling factor for this graph.
         zt_z_inv_scalar: precomputed (Z'Z)^-1 scalar for the RSR projection.
+        rho_alpha, rho_beta: Beta(rho_alpha, rho_beta) prior on the spatial
+            mixing parameter. Default (1,1) is uniform. Exposed as a
+            parameter (rather than hardcoded) to let a diagnostic rerun test
+            whether pulling the prior mass away from the rho=1 boundary
+            (e.g. Beta(2,2)) changes sampling behaviour, without touching
+            production settings until/unless that's confirmed to help.
+        sigma_spatial_prior_sigma, sigma_err_prior_sigma: HalfNormal scale
+            for the sigma_spatial/sigma_err priors. Default 0.5 each,
+            matching production. Exposed for the same reason: to test
+            whether a tighter prior (matching where the posterior actually
+            lives) improves sampling, before deciding whether to change it
+            for real.
 
     Returns:
         The unsampled pm.Model.
@@ -134,8 +182,8 @@ def build_unified_model(
         beta_inc = pm.Normal("beta_inc", mu=0.0, sigma=0.5)
 
         # Spatial Components (BYM2)
-        rho = pm.Beta("rho", alpha=1.0, beta=1.0)
-        sigma_spatial = pm.HalfNormal("sigma_spatial", sigma=0.5)
+        rho = pm.Beta("rho", alpha=rho_alpha, beta=rho_beta)
+        sigma_spatial = pm.HalfNormal("sigma_spatial", sigma=sigma_spatial_prior_sigma)
 
         phi_raw = pm.Flat("phi_raw", shape=N)
         pm.Potential("icar_penalty", -0.5 * pm.math.sum((phi_raw[node1] - phi_raw[node2]) ** 2))
@@ -167,31 +215,58 @@ def build_unified_model(
         mu = theory_log - (T_var / 2.0) + beta_th + beta_inc * income_z + omega_star
 
         # 5. Likelihood
-        sigma_err = pm.HalfNormal("sigma_err", sigma=0.5)
+        sigma_err = pm.HalfNormal("sigma_err", sigma=sigma_err_prior_sigma)
         pm.Normal("y", mu=mu, sigma=sigma_err, observed=y_obs)
 
     return unified_model
 
 
-def run_national_unified_model() -> az.InferenceData:
+def run_national_unified_model(
+    rho_alpha: float = 1.0,
+    rho_beta: float = 1.0,
+    sigma_spatial_prior_sigma: float = 0.5,
+    sigma_err_prior_sigma: float = 0.5,
+    target_accept: float = 0.99,
+    draws_override: int = None,
+    tune_override: int = None,
+) -> az.InferenceData:
     """Executes the National Unified Bayesian Inference Model.
 
     This function performs the following pipeline:
     1. Loads the synthetic household population and aggregates it to the MSOA level.
     2. Applies the Gaussian Process (GP) emulator for theoretical heating loads.
     3. Builds a sparse Queen contiguity spatial matrix (O(E) complexity).
-    4. Projects the income confounder to create a Restricted Spatial Regression (RSR) 
+    4. Projects the income confounder to create a Restricted Spatial Regression (RSR)
        orthogonal component.
-    5. Executes a PyMC NUTS sampler (1D ICAR via edge-lists) to decouple 
+    5. Executes a PyMC NUTS sampler (1D ICAR via edge-lists) to decouple
        socioeconomic rationing from physical building efficiency.
     6. Saves the MCMC trace and the decoupled energy metric (T*).
+
+    Args:
+        rho_alpha, rho_beta, sigma_spatial_prior_sigma, sigma_err_prior_sigma:
+            passed straight through to build_unified_model() — see its
+            docstring. Defaults match production exactly; only pass
+            non-default values for a deliberate diagnostic/experimental run,
+            never as a silent way to route around a failed convergence gate.
+        target_accept: NUTS target acceptance rate passed to pm.sample().
+            Default 0.99 matches production. Raising it forces a smaller
+            step size (more, cheaper-to-verify leapfrog steps per sample) —
+            the standard first-line remedy for divergences that doesn't
+            touch the model's priors at all.
+        draws_override, tune_override: if set, override MCMC_SAMPLES/
+            MCMC_TUNE from settings.py for this call only (PILOT_MODE's
+            10/10 still takes priority over these if PILOT_MODE is set).
+            Unlike target_accept, more draws/tune is only a legitimate fix
+            for poor mixing (high r_hat/low ESS on chains that already have
+            zero or near-zero divergences) — never a way to average over
+            genuinely divergent, biased sampling.
 
     Returns:
         az.InferenceData: The generated PyMC posterior trace.
     """
     logger.info("--- STAGE 3: UNIFIED NATIONAL BAYESIAN MODEL ---")
     log_memory("Initialization")
-    
+
     # 1. Load Data
     target_lad = os.environ.get("E2E_TARGET_LAD")
     target_region = os.environ.get("E2E_TARGET_REGION")
@@ -201,11 +276,11 @@ def run_national_unified_model() -> az.InferenceData:
         data_path = PROCESSED_DIR / "tests" / "e2e_outputs" / "national_synthetic_population_eti.parquet"
     else:
         data_path = PROCESSED_DIR / "national_synthetic_population_eti.parquet"
-        
+
     if not data_path.exists():
         logger.error(f"Missing data at {data_path}")
         return
-        
+
     df = pd.read_parquet(data_path)
 
     # -----------------------------------------------------------------------
@@ -233,7 +308,7 @@ def run_national_unified_model() -> az.InferenceData:
             logger.info(f"Running GP predictions for {len(df):,} households...")
             X_hh = df[GP_FEATURES].values.astype(float)
             X_hh_s = gp_scaler.transform(X_hh)
-            
+
             # ZERO TRUST PROTOCOL: Batch predictions to prevent 10GB RAM OOM crash
             BATCH_SIZE = 20000
             T_preds, T_stds = [], []
@@ -244,21 +319,21 @@ def run_national_unified_model() -> az.InferenceData:
                 pred, std = gp_model.predict(batch_X, return_std=True)
                 T_preds.append(pred)
                 T_stds.append(std)
-                
+
             T_pred = np.concatenate(T_preds)
             T_std = np.concatenate(T_stds)
-            
+
             # Zero Trust: Clamp Gaussian regression tails to prevent negative energy
             T_pred = np.maximum(0.0, T_pred)
-            
+
             df = df.assign(
                 theoretical_gas_kwh=T_pred * 277.778,
                 T_std_kwh=T_std * 277.778
             )
-            
+
             # E2E Inline Assertion: Bounds Check
             assert (df["theoretical_gas_kwh"] >= 0).all(), "FATAL: Negative theoretical gas prediction detected!"
-            
+
             log_memory("Post-GP Prediction")
     else:
         logger.warning(
@@ -266,12 +341,12 @@ def run_national_unified_model() -> az.InferenceData:
             "Falling back to analytical CSV baseline (power-law HLC scaling)."
         )
         df = _use_csv_baseline(df)
-    
+
     # Load confounders for Z_inc
     from src.config.settings import MSOA_CONFOUNDERS_NATIONAL
     conf_path = MSOA_CONFOUNDERS_NATIONAL
     confounders = pd.read_csv(conf_path).set_index('msoa_cd')
-    
+
     # Pre-aggregate to MSOA level (preserving arithmetic mean for mass conservation)
     # We aggregate empirical_thermal_kwh (which includes electric heating now!)
     # Pre-aggregate to MSOA level (preserving arithmetic mean for mass conservation)
@@ -294,21 +369,21 @@ def run_national_unified_model() -> az.InferenceData:
             T_var =('empirical_thermal_kwh', lambda x: np.var(np.log(x + 1e-6)))
         ).reset_index()
         logger.info("Using empirical within-MSOA variance for Jensen's correction (GP fallback).")
-    
+
     msoa_stats = msoa_stats.merge(confounders.reset_index(), left_on='msoa21cd', right_on='msoa_cd', how='inner')
     # (Dynamic PySAL spatial indices are generated later, so no predefined node_idx drop needed)
-    
+
     # -------------------------------------------------------------
     # DATA LINEAGE TRACKING
     # -------------------------------------------------------------
     from src.utils.tracker import log_distribution
     log_distribution(df, 'theoretical_gas_kwh', '02a_bayesian_input', logger)
     log_distribution(df, 'empirical_thermal_kwh', '02a_bayesian_input', logger)
-    
+
     initial_len = len(msoa_stats)
     msoa_stats = msoa_stats.dropna(subset=['y_mean', 'T_mean', 'income_dep_score'])
     assert len(msoa_stats) / initial_len > 0.99, "CRITICAL: Spatial merge dropped >1% of data!"
-    
+
     logger.info(f"Aggregated {len(df)} households into {len(msoa_stats)} MSOAs.")
     log_memory("Post-Aggregation Data Load")
 
@@ -316,19 +391,19 @@ def run_national_unified_model() -> az.InferenceData:
     from src.config.settings import BOUNDARIES_PATH
     boundaries_path = BOUNDARIES_PATH
     gdf = gpd.read_file(boundaries_path)
-    
+
     # Align GDF and MSOA stats perfectly
     gdf = gdf[gdf['MSOA21CD'].isin(msoa_stats['msoa21cd'])].sort_values('MSOA21CD').reset_index(drop=True)
     msoa_stats = msoa_stats.sort_values('msoa21cd').reset_index(drop=True)
-    
+
     # E2E Inline Assertion: Matrix Dimension Match
     assert len(gdf) == len(msoa_stats), f"FATAL: Dimension mismatch! GDF has {len(gdf)} but stats has {len(msoa_stats)}"
     if len(gdf) == 0:
         raise ValueError("FATAL: GeoDataFrame is empty after filtering! Check spatial boundary data.")
-    
+
     # Build Queen contiguity weights
     w = libpysal.weights.Queen.from_dataframe(gdf, ids=gdf['MSOA21CD'].tolist(), silence_warnings=True)
-    
+
     # Convert to node1, node2 lists for PyMC ICAR (extremely RAM efficient)
     node1, node2 = [], []
     for i, neighbors in w.neighbors.items():
@@ -336,23 +411,23 @@ def run_national_unified_model() -> az.InferenceData:
             if w.id2i[i] < w.id2i[j]:
                 node1.append(w.id2i[i])
                 node2.append(w.id2i[j])
-                
+
     node1 = np.array(node1)
     node2 = np.array(node2)
-    
+
     logger.info(f"Built spatial graph: {len(msoa_stats)} nodes, {len(node1)} edges. No chunking required!")
     log_memory("Sparse Graph Contiguity Built")
 
     # Prepare Tensors
     y_obs = np.log(msoa_stats['y_mean'].values)
     theory_log = np.log(msoa_stats['T_mean'].values)
-    
+
     # -------------------------------------------------------------
     # SHAPE ASSERTIONS
     # -------------------------------------------------------------
     assert node1.ndim == 1 and node2.ndim == 1, "FATAL: Graph arrays must be 1D vectors"
     assert node1.shape == node2.shape, "FATAL: node1 and node2 graph connectivity arrays have mismatched shapes!"
-    
+
     # Ensure node1 and node2 only contain valid indices
     assert np.all((node1 >= 0) & (node1 < len(msoa_stats))), "FATAL: node1 contains out-of-bounds indices"
     assert np.all((node2 >= 0) & (node2 < len(msoa_stats))), "FATAL: node2 contains out-of-bounds indices"
@@ -365,7 +440,7 @@ def run_national_unified_model() -> az.InferenceData:
     logger.info(f"ICAR BYM2 scaling factor: {icar_scaling_factor:.4f}")
 
     T_var = msoa_stats['T_var'].values
-    
+
     # Z_inc standardization
     std_val = msoa_stats['income_dep_score'].std()
     if np.isnan(std_val) or std_val == 0:
@@ -378,9 +453,9 @@ def run_national_unified_model() -> az.InferenceData:
     # To prevent O(N^2) dense matrix multiplication in the MCMC loop, we use O(N) scalar math:
     Z = income_z.reshape(-1, 1)
     Zt_Z_inv_scalar = np.linalg.pinv(Z.T @ Z)[0, 0]
-    
+
     log_memory("RSR Orthogonal Projection Created")
-    
+
     # 4. Bayesian Model Definition
     N = len(msoa_stats)
     n_edges = len(node1)
@@ -388,6 +463,9 @@ def run_national_unified_model() -> az.InferenceData:
         N=N, node1=node1, node2=node2, T_var=T_var, income_z=income_z,
         theory_log=theory_log, y_obs=y_obs,
         icar_scaling_factor=icar_scaling_factor, zt_z_inv_scalar=Zt_Z_inv_scalar,
+        rho_alpha=rho_alpha, rho_beta=rho_beta,
+        sigma_spatial_prior_sigma=sigma_spatial_prior_sigma,
+        sigma_err_prior_sigma=sigma_err_prior_sigma,
     )
 
     # Determine run mode: PILOT_MODE controls MCMC draws independently of data subsetting.
@@ -396,8 +474,8 @@ def run_national_unified_model() -> az.InferenceData:
     # (see _run_metadata) recording which mode produced it.
     is_pilot = PILOT_MODE
 
-    draws = 10 if is_pilot else MCMC_SAMPLES
-    tune = 10 if is_pilot else MCMC_TUNE
+    draws = 10 if is_pilot else (draws_override if draws_override is not None else MCMC_SAMPLES)
+    tune = 10 if is_pilot else (tune_override if tune_override is not None else MCMC_TUNE)
     chains = 2 if is_pilot else MCMC_CHAINS
     # Sparse implementation still requires sequential execution (cores=1) to stay within 8GB RAM limit
     cores = 1
@@ -407,12 +485,18 @@ def run_national_unified_model() -> az.InferenceData:
         sample_kwargs = {
             "draws": draws, "tune": tune,
             "chains": chains, "cores": cores,
-            "random_seed": RANDOM_SEED, "target_accept": 0.99,
+            "random_seed": RANDOM_SEED, "target_accept": target_accept,
             # rich's live progress bar writes Unicode (e.g. U+2009 thin space)
             # that crashes under Windows' legacy cp1252 console encoding
             # (UnicodeEncodeError from rich._win32_console) - logger.info calls
             # already report progress, so the bar is disabled rather than relied on.
             "progressbar": False,
+            # NOTE: tried restricting var_names to drop phi_raw/theta_raw
+            # (unused by any downstream code, ~1GB each at N=6853/5000
+            # draws/4 chains) to save memory. Reverted: pm.compute_log_likelihood()
+            # below requires every free RV -- including phi_raw/theta_raw --
+            # to be present in the trace, so this isn't a safe trim despite
+            # nothing else reading those two variables directly.
         }
         logger.info(f"Sampling with PyMC NUTS: {draws} draws, {tune} tune, {chains} chains, {cores} cores")
         trace = pm.sample(**sample_kwargs)
@@ -423,6 +507,20 @@ def run_national_unified_model() -> az.InferenceData:
     n_divergences = int(trace.sample_stats["diverging"].sum())
     logger.info(f"Convergence check: {n_divergences} divergences (max allowed {MCMC_MAX_DIVERGENCES}).")
     if n_divergences > MCMC_MAX_DIVERGENCES:
+        # Diagnostic only: does NOT change the gate's decision below. Dumps the
+        # trace to a distinctly-suffixed, clearly-non-final path and logs which
+        # scalar hyperparameters differ between divergent and non-divergent
+        # draws, so a human can diagnose *why* (e.g. rho pinned at a boundary)
+        # instead of guessing before deciding on a real fix.
+        diag_summary = summarize_divergent_draws(
+            trace, ["rho", "sigma_spatial", "sigma_err", "beta_th", "beta_inc"]
+        )
+        logger.warning(f"DIAGNOSTIC (gate will still fail): divergent vs non-divergent draw stats: {diag_summary}")
+        diag_path = PROCESSED_DIR / "national_unified_trace_DIAGNOSTIC_FAILED_GATE.nc"
+        if diag_path.exists():
+            diag_path.unlink(missing_ok=True)
+        trace.to_netcdf(diag_path)
+        logger.warning(f"DIAGNOSTIC trace (not a valid result, gate failed) saved to {diag_path}")
         raise RuntimeError(
             f"FATAL: {n_divergences} divergences exceeds the allowed maximum of "
             f"{MCMC_MAX_DIVERGENCES}. Refusing to save results as converged."
