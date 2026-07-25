@@ -4,6 +4,7 @@ import numpy as np
 from unittest.mock import patch, MagicMock
 from src.inference.model_unified import (
     log_memory, _use_csv_baseline, run_national_unified_model, build_unified_model,
+    summarize_divergent_draws,
 )
 
 def test_log_memory():
@@ -100,10 +101,17 @@ def test_run_national_unified_model_fallback(
     mock_trace.posterior = {'beta_inc': MagicMock(mean=MagicMock(return_value=MagicMock(item=MagicMock(return_value=1.0))))}
     
     with patch('src.inference.model_unified.os.environ.get', return_value="1"):
-        trace = run_national_unified_model()
+        trace = run_national_unified_model(target_accept=0.999, draws_override=5000, tune_override=5000)
 
     assert trace == mock_trace
     mock_sample.assert_called_once()
+    # target_accept/draws_override/tune_override must reach pm.sample
+    # unchanged -- these are the exact parameters real diagnostic runs
+    # exercise against production data, so a silent drop here would
+    # invalidate every experiment run under them.
+    assert mock_sample.call_args.kwargs["target_accept"] == pytest.approx(0.999)
+    assert mock_sample.call_args.kwargs["draws"] == 5000
+    assert mock_sample.call_args.kwargs["tune"] == 5000
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +122,7 @@ def test_run_national_unified_model_fallback(
 # called cannot catch a wrong prior spec; these can.
 # ---------------------------------------------------------------------------
 
-def _tiny_model(icar_scaling_factor=4.0, zt_z_inv_scalar=0.5):
+def _tiny_model(icar_scaling_factor=4.0, zt_z_inv_scalar=0.5, **prior_kwargs):
     """A 3-node, 2-edge (0-1, 1-2) synthetic graph small enough to hand-verify."""
     return build_unified_model(
         N=3,
@@ -126,7 +134,41 @@ def _tiny_model(icar_scaling_factor=4.0, zt_z_inv_scalar=0.5):
         y_obs=np.zeros(3),
         icar_scaling_factor=icar_scaling_factor,
         zt_z_inv_scalar=zt_z_inv_scalar,
+        **prior_kwargs,
     )
+
+
+def test_diagnostic_prior_params_default_to_production_values():
+    """Calling build_unified_model with no override must reproduce exactly
+    the hardcoded production priors (Beta(1,1) on rho, HalfNormal(0.5) on
+    sigma_spatial/sigma_err) -- these new parameters must be pure passthrough
+    additions, never a silent behaviour change for the default (production)
+    call path."""
+    model = _tiny_model()
+    rho_alpha, rho_beta = model["rho"].owner.inputs[2].data, model["rho"].owner.inputs[3].data
+    assert float(rho_alpha) == pytest.approx(1.0)
+    assert float(rho_beta) == pytest.approx(1.0)
+    sigma_spatial_scale = model["sigma_spatial"].owner.inputs[3].data
+    sigma_err_scale = model["sigma_err"].owner.inputs[3].data
+    assert float(sigma_spatial_scale) == pytest.approx(0.5)
+    assert float(sigma_err_scale) == pytest.approx(0.5)
+
+
+def test_diagnostic_prior_params_override_rho_beta_params():
+    """rho_alpha=2.0, rho_beta=3.0 must produce Beta(2,3) on rho -- hand
+    checked against the literal arguments passed in, not derived from the
+    function under test."""
+    model = _tiny_model(rho_alpha=2.0, rho_beta=3.0)
+    assert float(model["rho"].owner.inputs[2].data) == pytest.approx(2.0)
+    assert float(model["rho"].owner.inputs[3].data) == pytest.approx(3.0)
+
+
+def test_diagnostic_prior_params_override_sigma_scales():
+    """sigma_spatial_prior_sigma=0.1, sigma_err_prior_sigma=0.2 must produce
+    HalfNormal(0.1) / HalfNormal(0.2) respectively."""
+    model = _tiny_model(sigma_spatial_prior_sigma=0.1, sigma_err_prior_sigma=0.2)
+    assert float(model["sigma_spatial"].owner.inputs[3].data) == pytest.approx(0.1)
+    assert float(model["sigma_err"].owner.inputs[3].data) == pytest.approx(0.2)
 
 
 def test_phi_raw_is_flat_not_normal():
@@ -183,3 +225,31 @@ def test_build_unified_model_samples_without_crashing():
         trace = pm.sample(draws=5, tune=5, chains=1, cores=1, progressbar=False)
     assert trace.posterior["phi"].shape == (1, 5, 3)
     assert np.all(np.isfinite(trace.posterior["phi"].values))
+
+
+def test_summarize_divergent_draws_splits_by_diverging_flag():
+    """Hand-constructed trace, 1 chain x 4 draws. diverging = [F, T, F, T],
+    so draws 1 and 3 (0-indexed) are the "diverging" group.
+    rho          = [0.1, 0.9, 0.2, 0.95]  -> diverging mean = (0.9+0.95)/2 = 0.925, non-diverging = (0.1+0.2)/2 = 0.15
+    sigma_spatial = [1.0, 5.0, 1.2, 5.5]   -> diverging mean = (5.0+5.5)/2 = 5.25,  non-diverging = (1.0+1.2)/2 = 1.1
+    Computed by hand before running the function, per the project's testing standard."""
+    import arviz as az
+    posterior = {
+        "rho": np.array([[0.1, 0.9, 0.2, 0.95]]),
+        "sigma_spatial": np.array([[1.0, 5.0, 1.2, 5.5]]),
+    }
+    sample_stats = {
+        "diverging": np.array([[False, True, False, True]]),
+    }
+    trace = az.from_dict({"posterior": posterior, "sample_stats": sample_stats})
+
+    result = summarize_divergent_draws(trace, ["rho", "sigma_spatial"])
+
+    assert result["rho"]["diverging"]["n"] == 2
+    assert result["rho"]["diverging"]["mean"] == pytest.approx(0.925)
+    assert result["rho"]["non_diverging"]["n"] == 2
+    assert result["rho"]["non_diverging"]["mean"] == pytest.approx(0.15)
+    assert result["sigma_spatial"]["diverging"]["mean"] == pytest.approx(5.25)
+    assert result["sigma_spatial"]["non_diverging"]["mean"] == pytest.approx(1.1)
+    assert result["rho"]["diverging"]["min"] == pytest.approx(0.9)
+    assert result["rho"]["diverging"]["max"] == pytest.approx(0.95)
