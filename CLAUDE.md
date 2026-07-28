@@ -60,6 +60,13 @@ manuscript/             .tex, figures, submission files (gitignored)
 archive/legacy_scripts/ superseded code, kept not deleted
 ```
 
+## Obsidian vault
+
+Research knowledge base: `OneDrive - The University of Manchester/Second_Brain`.
+**Whenever a paper, citation, concept, or dataset comes up, use the `vault` skill** — it holds
+the dedupe protocol, note templates, and index conventions. Verify DOIs before they enter the
+vault; a laundered fabricated citation is worse than no note.
+
 ## Working style
 
 - State uncertainty explicitly; flag stale/unverifiable numbers rather than passing them on.
