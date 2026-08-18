@@ -1,4 +1,4 @@
-name: E2E Pipeline and Unit Tests
+name: Tests
 
 on:
   push:
@@ -9,39 +9,29 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-        cache: 'pip'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-    - name: Run Unit Tests (SOLID/Scala Verification)
-      run: |
-        pytest tests/unit/
+      - uses: actions/checkout@v4
 
-    - name: Run Component/Integration Tests (real, non-mocked statistical cores)
-      env:
-        TEST_MODE: "1"
-      run: |
-        pytest tests/integration/
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
 
-    - name: Run E2E Fixture Pipeline (Physical Bounds Verification)
-      env:
-        TEST_MODE: "1"
-      run: |
-        pytest tests/test_e2e_pipeline.py
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
 
-    - name: Run Golden Baseline Test (cross-stage regression check)
-      env:
-        TEST_MODE: "1"
-      run: |
-        pytest tests/test_golden.py
+      # One invocation, not one per directory. The previous workflow ran pytest
+      # four times over different paths, which hid a session-fixture conflict
+      # between test_e2e_pipeline.py and test_golden.py that only appears when
+      # both run in the same session.
+      #
+      # tests/conftest.py sets TEST_MODE and skips the tests that need either
+      # the licensed input fixtures or a local R+INLA install, neither of which
+      # exists on a stock runner. -ra prints those skips with their reasons so a
+      # green run still shows exactly what was not exercised.
+      - name: Run test suite
+        run: pytest -ra

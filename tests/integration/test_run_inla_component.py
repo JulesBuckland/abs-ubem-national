@@ -18,6 +18,8 @@ import pytest
 
 from src.inference.inla.run_inla import run_national_inla_model
 
+pytestmark = pytest.mark.requires_r_inla
+
 
 def _tiny_dataset(n=9):
     # 3x3 grid graph, rook adjacency, matching the pattern used in

@@ -8,14 +8,8 @@ import arviz as az
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-@pytest.fixture(scope="session", autouse=True)
-def set_test_mode():
-    os.environ["TEST_MODE"] = "1"
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    yield
-    del os.environ["TEST_MODE"]
-    del os.environ["PYTHONIOENCODING"]
 
+@pytest.mark.requires_fixtures
 def test_golden_baseline():
     """
     Runs the pipeline end-to-end in test mode and compares outputs against a golden baseline.
