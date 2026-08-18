@@ -3,8 +3,11 @@ import joblib
 from pathlib import Path
 from hypothesis import given, settings, strategies as st
 
-# Setup Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Setup Paths. This file sits at tests/, so the repository root is two levels
+# up - not three. The extra .parent resolved to the directory *above* the
+# repository, where no model can exist, so every test in this module skipped
+# itself unconditionally instead of ever exercising the surrogate.
+BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "data" / "processed" / "gp_emulator.pkl"
 
 def load_gp():
