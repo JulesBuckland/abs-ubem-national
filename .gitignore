@@ -1,13 +1,29 @@
-# Data and outputs
-data/
-# tests/fixtures/* (not tests/fixtures/) so the golden-baseline negation below
-# actually works: git cannot re-include anything inside a directory excluded
-# by a plain "dir/" pattern, only inside one excluded via "dir/*".
-tests/fixtures/*
-outputs/
+# --- Data and outputs ---
+# Leading slash matters: a bare "data/" also matches the src/data/ SOURCE
+# package, which silently kept the entire population-synthesis stage out of
+# the published repo. Anchor every data path to the repository root.
+/data/
 *.parquet
 *.nc
 *.pkl
+
+# Generated output and logs, wherever they land. Left unanchored on purpose:
+# running a module from the wrong working directory has previously scattered
+# these into src/, and no source package is named logs/ or outputs/.
+logs/
+outputs/
+
+# Stray data artefacts from exactly that mistake. src/data/ is a source
+# package, so it cannot be excluded wholesale - name the artefact
+# subdirectories explicitly instead.
+src/data/raw/
+src/data/processed/
+
+# Test fixtures are derived from licensed inputs and are not redistributable.
+# Spelled "tests/fixtures/*" rather than "tests/fixtures/" so the golden
+# negation below can work: git cannot re-include anything inside a directory
+# excluded by a plain "dir/" pattern, only inside one excluded via "dir/*".
+tests/fixtures/*
 
 # Golden-test baselines are the exception: they must be committed and persist
 # across CI runs, or test_golden.py silently creates a fresh baseline every
@@ -15,36 +31,42 @@ outputs/
 !tests/fixtures/golden/
 !tests/fixtures/golden/**
 
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
-.hypothesis/
-.venv/
-.env
-.temp downloads/
-
-# OS
-.DS_Store
-
-# Exclude massive folders from Github packaging
-archive/
-journal_resources/
-literature/
-logs/
-scratch/
-papers/
+# --- Notes, plans and AI tooling ---
+# Research notes, planning docs and assistant instructions stay local. OneDrive
+# is their backup, not git. README.md is the one tracked markdown file.
+*.md
+!README.md
+.claude/
+.agents/
 tasks/
 meta/
-
-.ignored/
-python-installer.exe
+scratch/
 scratch_scripts/
+.ignored/
 
-# Private research files
-manuscript/
+# --- Private research material ---
+/manuscript/
+/docs/
+/papers/
+/archive/
+journal_resources/
+literature/
 github_submission/
-docs/
-GEMINI.md
-TESTING_STRATEGY.md
 methodology.txt
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+.env
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- OS and misc ---
+.DS_Store
+Thumbs.db
+.temp downloads/
+python-installer.exe
