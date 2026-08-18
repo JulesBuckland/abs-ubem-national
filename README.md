@@ -50,7 +50,7 @@ flowchart TD
     subgraph Core ["Physics and spatial estimation"]
         direction TB
         IPF["Iterative proportional fitting<br/>Synthesises households matching<br/>census marginals per MSOA"]:::logic
-        GP["Gaussian-process surrogate<br/>Maps fabric and form to required<br/>thermal demand T* in O(1)"]:::logic
+        GP["Gaussian-process surrogate<br/>Maps fabric, form and climate to<br/>required thermal demand T* in O(1)"]:::logic
         RSR["Restricted spatial regression<br/>Orthogonalises the spatial field<br/>against income deprivation"]:::logic
         FIT["Inference engine<br/>R-INLA BYM2 + PC priors (primary)<br/>PyMC NUTS ICAR (cross-check)"]:::logic
     end

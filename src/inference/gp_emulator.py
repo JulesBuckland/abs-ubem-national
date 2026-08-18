@@ -3,7 +3,12 @@ src/inference/gp_emulator.py
 ============================
 Trains a Gaussian Process emulator on the LHS-sampled EnergyPlus results.
 The emulator predicts annual thermal energy demand T_h (kWh/year) given:
-    [floor_area, wall_u, ach, wwr, form_code]
+    [floor_area, wall_u, ach, wwr, form_code, hdd]
+
+The design is six-dimensional: heating degree days (hdd) carry the climate
+exposure term, without which the surrogate cannot separate a cold location
+from a leaky fabric. FEATURES below is the authoritative list, and
+model_unified.GP_FEATURES must match it exactly.
 
 Acceptance criterion: held-out R² > 0.99 on 50 test points per archetype.
 
