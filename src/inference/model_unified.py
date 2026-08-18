@@ -57,12 +57,19 @@ def log_memory(stage_name: str) -> None:
     Args:
         stage_name (str): The name of the current pipeline stage.
     """
-    if psutil is not None:
+    if psutil is None:
+        logger.info(f"[RAM USAGE - {stage_name}]: (psutil not installed, cannot track RAM)")
+        return
+    try:
         process = psutil.Process(os.getpid())
         mem_mb = process.memory_info().rss / (1024 * 1024)
-        logger.info(f"[RAM USAGE - {stage_name}]: {mem_mb:.2f} MB")
-    else:
-        logger.info(f"[RAM USAGE - {stage_name}]: (psutil not installed, cannot track RAM)")
+    except Exception as exc:
+        # This is diagnostics only, so it must never be able to abort a run
+        # that is otherwise fine - a multi-hour national fit should not die
+        # because a memory reading failed.
+        logger.warning(f"[RAM USAGE - {stage_name}]: unavailable ({exc})")
+        return
+    logger.info(f"[RAM USAGE - {stage_name}]: {mem_mb:.2f} MB")
 
 def summarize_divergent_draws(trace, param_names: list) -> dict:
     """Pure summary of scalar posterior parameters, split by whether their draw

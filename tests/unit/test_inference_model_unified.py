@@ -56,7 +56,12 @@ def test_use_csv_baseline_missing(mock_read_csv):
 @patch('src.inference.model_unified.joblib.load')
 @patch('src.inference.model_unified.GP_MODEL_PATH')
 @patch('pathlib.Path.exists')
-@patch('builtins.open')
+# Patched at module scope, not as builtins.open. Patching the builtin globally
+# also replaced the open() that psutil uses to read /proc/<pid>/statm on Linux,
+# where memory_info() unpacks exactly seven fields from it - so log_memory()
+# raised "not enough values to unpack (expected 7, got 0)" and this test failed
+# on Linux while passing on Windows, where psutil uses Win32 APIs instead.
+@patch('src.inference.model_unified.open', create=True)
 def test_run_national_unified_model_fallback(
     mock_open, mock_path_exists, mock_gp_path, mock_joblib,
     mock_summary, mock_loglik, mock_sample, 
