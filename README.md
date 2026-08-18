@@ -5,8 +5,8 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Licence: CC BY 4.0](https://img.shields.io/badge/licence-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 
-A national-scale Bayesian building-stock energy model (a UBEM) for England that
-separates two things routinely conflated in observed gas consumption:
+A national-scale Bayesian model of England's housing stock that separates two
+things routinely conflated in observed gas consumption:
 
 - **the thermal energy a dwelling physically requires** — a function of its
   fabric, form and climate exposure, estimated by a Gaussian-process surrogate
