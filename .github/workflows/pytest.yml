@@ -24,14 +24,45 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # One invocation, not one per directory. The previous workflow ran pytest
+      - name: Record resolved environment
+        run: |
+          python -c "import sys; print(sys.version)"
+          pip list
+
+      # One invocation, not one per directory. An earlier workflow ran pytest
       # four times over different paths, which hid a session-fixture conflict
       # between test_e2e_pipeline.py and test_golden.py that only appears when
       # both run in the same session.
       #
-      # tests/conftest.py sets TEST_MODE and skips the tests that need either
-      # the licensed input fixtures or a local R+INLA install, neither of which
+      # tests/conftest.py sets TEST_MODE and skips the tests needing either the
+      # licensed input fixtures or a local R+INLA install, neither of which
       # exists on a stock runner. -ra prints those skips with their reasons so a
       # green run still shows exactly what was not exercised.
       - name: Run test suite
-        run: pytest -ra
+        run: |
+          set -o pipefail
+          pytest -ra --tb=short | tee pytest.log
+
+      # Failure details are otherwise only in the raw job log, which needs
+      # repository admin rights to download. Echoing the summary lines as
+      # annotations makes a red build diagnosable from the run page itself.
+      - name: Surface failure summary
+        if: failure()
+        run: |
+          if [ ! -f pytest.log ]; then
+            echo "::error::pytest produced no log; the run failed before collection"
+            exit 0
+          fi
+          grep -E "^(FAILED|ERROR)" pytest.log | head -25 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          grep -E "^E +" pytest.log | head -25 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+
+      - name: Upload pytest log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: pytest.log
