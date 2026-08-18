@@ -1,6 +1,6 @@
 # Separating dwelling heat requirement from household energy rationing
 
-[![Tests](https://github.com/JulesBuckland/thermal-rationing-england/actions/workflows/pytest.yml/badge.svg)](https://github.com/JulesBuckland/thermal-rationing-england/actions/workflows/pytest.yml)
+[![Tests](../../actions/workflows/pytest.yml/badge.svg)](../../actions/workflows/pytest.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21629036.svg)](https://doi.org/10.5281/zenodo.21629036)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Licence: CC BY 4.0](https://img.shields.io/badge/licence-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
