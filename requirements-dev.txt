@@ -1,0 +1,9 @@
+# Test tooling. Needed by CI and by anyone running the suite; kept separate so
+# a reproduction run does not have to install it.
+#
+# Both were previously absent from every requirements file while CI invoked
+# pytest directly, which is why the workflow could not have passed.
+-r requirements.txt
+
+pytest>=9.1.1
+hypothesis>=6.158.0
