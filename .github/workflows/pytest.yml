@@ -53,10 +53,12 @@ jobs:
             echo "::error::pytest produced no log; the run failed before collection"
             exit 0
           fi
-          grep -E "^(FAILED|ERROR)" pytest.log | head -25 | while IFS= read -r line; do
+          # The FAILURES block carries the frame that actually raised, which
+          # the summary lines alone do not.
+          awk '/^=+ FAILURES/{f=1; next} /^=+ (short test summary|warnings summary|slowest)/{f=0} f'             pytest.log | grep -vE "^\s*$" | head -60 | while IFS= read -r line; do
             echo "::error::${line}"
           done
-          grep -E "^E +" pytest.log | head -25 | while IFS= read -r line; do
+          grep -E "^(FAILED|ERROR)" pytest.log | head -25 | while IFS= read -r line; do
             echo "::error::${line}"
           done
 
