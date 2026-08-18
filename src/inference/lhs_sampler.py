@@ -1,6 +1,6 @@
 """
-10a_lhs_sampler.py
-==================
+src/inference/lhs_sampler.py
+============================
 Generates Latin Hypercube Sampling (LHS) experimental designs for EnergyPlus
 emulator training. Produces one CSV per archetype (32 files × 300 rows).
 

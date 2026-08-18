@@ -1,8 +1,8 @@
 """
-10b_energyplus_lhs_batch.py
-============================
+src/physics/energyplus_batch.py
+==============================
 Runs EnergyPlus for every point in the LHS design files produced by
-10a_lhs_sampler.py.
+src/inference/lhs_sampler.py.
 
 Parallelised across available CPU cores via ProcessPoolExecutor.
 Supports resume: already-completed runs are skipped.
@@ -251,7 +251,7 @@ def check_placeholder_weather(physics_dir: Path) -> bool:
 def run_lhs_batch(max_workers: int = 6, check_completeness: bool = False, resume: bool = False):
     design_files = sorted(LHS_DIR.glob("lhs_*.csv"))
     if not design_files:
-        logger.error(f"No LHS design files found in {LHS_DIR}. Run 00a_lhs_sampler.py first.")
+        logger.error(f"No LHS design files found in {LHS_DIR}. Run 'python -m src.inference.lhs_sampler' first.")
         return
 
     if not EP_EXE.exists():

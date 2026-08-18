@@ -1,6 +1,6 @@
 """
-10c_gp_emulator.py
-==================
+src/inference/gp_emulator.py
+============================
 Trains a Gaussian Process emulator on the LHS-sampled EnergyPlus results.
 The emulator predicts annual thermal energy demand T_h (kWh/year) given:
     [floor_area, wall_u, ach, wwr, form_code]
@@ -66,7 +66,8 @@ def load_data() -> pd.DataFrame:
     if not COMBINED_CSV.exists():
         raise FileNotFoundError(
             f"Combined LHS results not found at {COMBINED_CSV}.\n"
-            "Run 00a_lhs_sampler.py then 00b_energyplus_lhs_batch.py first."
+            "Run 'python -m src.inference.lhs_sampler' then "
+            "'python -m src.physics.energyplus_batch' first."
         )
     df = pd.read_csv(COMBINED_CSV)
     before = len(df)
@@ -147,7 +148,7 @@ def check_acceptance(r2: float, threshold: float = config.GP_ACCEPTANCE_R2) -> N
     if r2 < threshold:
         raise ValueError(
             f"R² = {r2:.4f} < {threshold} — emulator does not meet acceptance threshold. "
-            "Options: increase N_SAMPLES in 10a_lhs_sampler.py, or check EnergyPlus run quality."
+            "Options: increase N_SAMPLES in src/inference/lhs_sampler.py, or check EnergyPlus run quality."
         )
     logger.info(f"✓ Acceptance criterion met (R² = {r2:.4f} ≥ {threshold}).")
 

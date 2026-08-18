@@ -21,7 +21,7 @@ from src.config.settings import (
 )
 
 GP_MODEL_PATH = PROCESSED_DIR / "gp_emulator.pkl"
-# GP input features — must match columns produced by 10c_gp_emulator.py
+# GP input features — must match columns produced by src/inference/gp_emulator.py
 GP_FEATURES = ["floor_area", "wall_u", "ach", "wwr", "form_code", "hdd"]
 
 logger = setup_logging("BayesianUnifiedNational")
@@ -278,15 +278,22 @@ def run_national_unified_model(
         data_path = PROCESSED_DIR / "national_synthetic_population_eti.parquet"
 
     if not data_path.exists():
-        logger.error(f"Missing data at {data_path}")
-        return
+        # Raise rather than return: returning normally here made the CLI report
+        # "Run complete." after doing nothing, and exit 0, so a missing input
+        # looked like a successful run in both the terminal and CI.
+        raise FileNotFoundError(
+            f"Synthetic population not found at {data_path}.\n"
+            "Build it with 'python -m src.data.population' (needs the licensed "
+            "NEED seed in data/raw/), or generate a synthetic stand-in with "
+            "'python -m src.data.generate_synthetic_data'. See README.md."
+        )
 
     df = pd.read_parquet(data_path)
 
     # -----------------------------------------------------------------------
     # GP Emulator: replace power-law HLC scaling with a trained surrogate.
     # Requires columns [floor_area, wall_u, ach, wwr, form_code] in the parquet
-    # (added by 01_population_synthesis.py after Step 6 modifications).
+    # (added by src/data/population.py after Step 6 modifications).
     # Falls back to the CSV baseline if the GP model file does not exist.
     # -----------------------------------------------------------------------
     if GP_MODEL_PATH.exists():
@@ -300,7 +307,7 @@ def run_national_unified_model(
         if missing_cols:
             logger.warning(
                 f"GP feature columns missing from parquet: {missing_cols}.\n"
-                "Ensure 01_population_synthesis.py has been updated (Step 6).\n"
+                "Ensure src/data/population.py has been updated (Step 6).\n"
                 "Falling back to CSV archetype baseline."
             )
             df = _use_csv_baseline(df)
@@ -309,7 +316,8 @@ def run_national_unified_model(
             X_hh = df[GP_FEATURES].values.astype(float)
             X_hh_s = gp_scaler.transform(X_hh)
 
-            # ZERO TRUST PROTOCOL: Batch predictions to prevent 10GB RAM OOM crash
+            # Batch the predictions: scoring all households in one call exhausts
+            # roughly 10 GB of RAM and is killed by the OS.
             BATCH_SIZE = 20000
             T_preds, T_stds = [], []
             import math
@@ -323,7 +331,8 @@ def run_national_unified_model(
             T_pred = np.concatenate(T_preds)
             T_std = np.concatenate(T_stds)
 
-            # Zero Trust: Clamp Gaussian regression tails to prevent negative energy
+            # Clamp the Gaussian tails - the surrogate can return small negative
+            # values, which are not physically meaningful as energy demand.
             T_pred = np.maximum(0.0, T_pred)
 
             df = df.assign(
