@@ -80,8 +80,8 @@ Requires **Python 3.12**. R and INLA are optional — see
 [Optional: R-INLA](#optional-r-inla).
 
 ```bash
-git clone https://github.com/JulesBuckland/thermal-rationing-england.git
-cd thermal-rationing-england
+git clone https://github.com/JulesBuckland/abs-ubem-national.git
+cd abs-ubem-national
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
@@ -235,7 +235,7 @@ If you use this code, please cite the archived release:
              rationing at national scale},
   year    = {2026},
   doi     = {10.5281/zenodo.21629036},
-  url     = {https://github.com/JulesBuckland/thermal-rationing-england}
+  url     = {https://github.com/JulesBuckland/abs-ubem-national}
 }
 ```
 
