@@ -1,59 +1,251 @@
-# BS-UBEM: Auto-Differentiable Bayesian Surrogate for Urban Building Energy Modeling
+# Separating dwelling heat requirement from household energy rationing
 
-A highly-scalable, methodologically rigorous Bayesian inference pipeline for decoupling physical building efficiency from socioeconomic energy rationing (fuel poverty).
+[![Tests](https://github.com/JulesBuckland/thermal-rationing-england/actions/workflows/pytest.yml/badge.svg)](https://github.com/JulesBuckland/thermal-rationing-england/actions/workflows/pytest.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21629036.svg)](https://doi.org/10.5281/zenodo.21629036)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![Licence: CC BY 4.0](https://img.shields.io/badge/licence-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 
-## Execution (Out-of-the-Box)
-To run the fully reproducible Bayesian pipeline:
+A national-scale Bayesian building-stock energy model (a UBEM) for England that
+separates two things routinely conflated in observed gas consumption:
 
-```bash
-# Execute the beautiful Rich CLI interface
-python -m src.cli.run_inference
-```
+- **the thermal energy a dwelling physically requires** — a function of its
+  fabric, form and climate exposure, estimated by a Gaussian-process surrogate
+  trained on EnergyPlus simulations; and
+- **the energy its occupants actually use** — which, for households under
+  financial pressure, can fall well below that requirement.
 
-## System Architecture
+The gap between the two is a measure of *rationing* (self-disconnection,
+under-heating) rather than of efficiency. Treating a low gas bill as evidence of
+an efficient home is the inference error the model exists to avoid.
 
-Below is the complete computational architecture mapping the flow of data through the Iterative Proportional Fitting, physics surrogate, and Bayesian components.
+Estimation runs over all **6,853 English MSOAs** on a synthetic population of
+**685,300 households**. The spatial term is a BYM2 field with penalised-complexity
+priors, fitted under restricted spatial regression (RSR) so the spatial random
+effect is projected onto the orthogonal complement of the income-deprivation
+covariate — without which the spatial field absorbs the deprivation signal the
+model is trying to measure.
+
+> **Status.** Supports a manuscript submitted to *Energy and Buildings* (July
+> 2026). Results are not peer-reviewed yet.
+
+---
+
+## Architecture
 
 ```mermaid
----
-title: BS-UBEM: Auto-Differentiable Bayesian Spatial Pipeline
----
 flowchart TD
-    %% Styling - University of Manchester Brand Colours
     classDef person fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
     classDef orchestrator fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
     classDef logic fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
     classDef datastore fill:#333333,color:#ffffff,stroke:#FFCC33,stroke-width:2px
     classDef extLib fill:#f4f4f4,color:#333333,stroke:#333333,stroke-width:2px,stroke-dasharray: 4 4
 
-    User["Energy Researcher<br/>[Person]<br/>Executes inference pipeline"]:::person
+    User["Researcher<br/>Runs the pipeline"]:::person
 
-    InputFS["Input Data Store<br/>[Local File System]<br/>Census Marginals<br/>Pre-trained Models (.pkl)<br/>MSOA Boundaries"]:::datastore
-    OutputFS["Output Data Store<br/>[Local File System]<br/>Posterior Traces (.nc)<br/>Decoupled Metrics (.csv)"]:::datastore
+    InputFS["Inputs<br/>Census marginals · NEED seed<br/>EnergyPlus LHS results<br/>MSOA boundaries"]:::datastore
+    OutputFS["Outputs<br/>Posterior summaries (.csv)<br/>Traces (.nc)"]:::datastore
 
-    CLI["BS-UBEM CLI Orchestrator<br/>[Python / Rich]<br/>Manages execution flow and state"]:::orchestrator
+    CLI["CLI orchestrator<br/>src/cli/run_inference.py"]:::orchestrator
 
-    subgraph CoreLogic ["Core Physics & Spatial Math"]
+    subgraph Core ["Physics and spatial estimation"]
         direction TB
-        IPF["Iterative Proportional Fitting (IPF)<br/>[NumPy/SciPy]<br/>Generates high-resolution synthetic agents<br/>matching national census marginals"]:::logic
-
-        GP["Gaussian Process Surrogate Model<br/>[Scikit-Learn / PyTensor]<br/>Auto-Differentiable mapping of housing archetypes<br/>to theoretical energy demand (T*) in O(1) time"]:::logic
-        
-        RSR["Restricted Spatial Regression (RSR)<br/>[NumPy]<br/>Projects the spatial random effect<br/>onto the orthogonal complement of<br/>the Income Deprivation Index (Z)"]:::logic
-        
-        MCMC["Bayesian Inference Engine<br/>[PyMC NUTS Sampler]<br/>Solves the national-scale spatial graph<br/>using a Sparse 1D Queen-contiguity ICAR prior"]:::logic
+        IPF["Iterative proportional fitting<br/>Synthesises households matching<br/>census marginals per MSOA"]:::logic
+        GP["Gaussian-process surrogate<br/>Maps fabric and form to required<br/>thermal demand T* in O(1)"]:::logic
+        RSR["Restricted spatial regression<br/>Orthogonalises the spatial field<br/>against income deprivation"]:::logic
+        FIT["Inference engine<br/>R-INLA BYM2 + PC priors (primary)<br/>PyMC NUTS ICAR (cross-check)"]:::logic
     end
-    
-    PySAL["GeoPandas / PySAL<br/>[External Library]<br/>Builds the MSOA spatial adjacency matrix"]:::extLib
 
-    User -- "Triggers Pipeline" --> CLI
-    CLI -- "Loads data" --> InputFS
-    CLI -- "Initialises" --> IPF
-    IPF -- "Passes Synthetic Agents" --> GP
-    GP -- "Passes Differentiable T*" --> RSR
-    RSR -- "Passes Orthogonalised Z" --> MCMC
-    MCMC -- "Requests Adjacency Edge-List" --> PySAL
-    MCMC -- "Writes Posterior Results" --> OutputFS
+    PySAL["GeoPandas / libpysal<br/>MSOA adjacency matrix"]:::extLib
+
+    User --> CLI
+    CLI --> InputFS
+    CLI --> IPF
+    IPF -->|synthetic households| GP
+    GP -->|required demand T*| RSR
+    RSR -->|orthogonalised covariate| FIT
+    FIT -->|adjacency| PySAL
+    FIT --> OutputFS
 ```
 
+R-INLA is the primary engine: it fits the national model in ~200 s against
+~2.5 h for the equivalent NUTS run, which is what makes prior-sensitivity and
+holdout sweeps affordable. The PyMC NUTS path is retained as an independent
+cross-check of the same posterior.
 
+---
+
+## Installation
+
+Requires **Python 3.12**. R and INLA are optional — see
+[Optional: R-INLA](#optional-r-inla).
+
+```bash
+git clone https://github.com/JulesBuckland/thermal-rationing-england.git
+cd thermal-rationing-england
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+```
+
+`requirements.txt` holds runtime dependencies with version floors;
+`requirements-dev.txt` adds the test tooling; `requirements-lock.txt` pins the
+full transitive tree used to produce the published results, for exact
+reproduction.
+
+### Verify the installation
+
+```bash
+pytest -ra
+```
+
+This needs no data. Tests that require either the licensed input fixtures or a
+local R-INLA install skip themselves and state why — `-ra` lists them, so a
+green run still shows exactly what was and was not exercised.
+
+---
+
+## Quick start on synthetic data
+
+The pipeline's real inputs are large and partly licence-restricted, so the
+repository ships a generator that produces synthetic inputs of the right shape
+from a fixed seed:
+
+```bash
+python -m src.data.generate_synthetic_data
+```
+
+That writes a 680,000-household synthetic population and matching MSOA
+confounders to `data/processed/`. It needs no external data and takes a few
+seconds.
+
+To then run inference you additionally need the MSOA boundary geometries, which
+are openly licensed (see [Data](#data)), and a trained surrogate
+(`data/processed/gp_emulator.pkl`). The CLI checks for every required input up
+front and tells you which are missing and how to obtain each:
+
+```bash
+python -m src.cli.run_inference
+```
+
+For a fast approximate run on real data, set `PILOT_MODE=1`: it uses a
+deliberately small draw count and writes to distinctly-suffixed files, stamped
+with run metadata, so pilot output cannot be mistaken for a final result.
+
+---
+
+## Data
+
+No input data is committed. Sizes below are the real national inputs.
+
+| Input | Licence | How to obtain |
+|---|---|---|
+| MSOA boundaries (Dec 2021) | Open Government Licence v3 | [ONS Open Geography Portal](https://geoportal.statistics.gov.uk/) |
+| Census 2021 housing and tenure (TS044, TS054) | Open Government Licence v3 | [ONS / Nomis](https://www.nomisweb.co.uk/) |
+| NEED gas-consumption panel (50,000-property sample) | DESNZ end-user licence | [gov.uk NEED collection](https://www.gov.uk/government/collections/national-energy-efficiency-data-need-framework) |
+| EnergyPlus LHS simulation results | Generated locally (~6.8 GB of runs) | `src/inference/lhs_sampler.py` then `src/physics/energyplus_batch.py` |
+
+Place raw inputs under `data/raw/` following the paths in
+`src/config/settings.py`, which is the single source of truth for every filename
+the pipeline reads.
+
+The test fixtures under `tests/fixtures/raw/` are derived from the NEED sample
+and are therefore **not redistributable**. Regenerate them with
+`python tests/generate_fixtures.py` once `data/raw/` is populated; the
+data-dependent tests skip cleanly until then.
+
+---
+
+## Reproducing the published results
+
+```bash
+python -m src.inference.lhs_sampler          # LHS design over the archetype space
+python -m src.physics.energyplus_batch       # EnergyPlus runs (long; needs EnergyPlus)
+python -m src.inference.gp_emulator          # train and validate the GP surrogate
+python -m src.data.population                # IPF synthetic population
+python -m src.inference.inla.run_inla        # primary national fit (R-INLA)
+```
+
+`run_national_pipeline.ps1` wraps the population → surrogate → inference stages
+on Windows. Validation and figure scripts live in `src/research/`:
+
+| Script | Purpose |
+|---|---|
+| `regenerate_main_figures.py` | Manuscript figures, drawn from data at run time |
+| `regenerate_fig1_architecture.py` | Architecture figure |
+| `make_graphical_abstract.py` | Graphical abstract |
+| `ukhls_convergent_validation.py` | Convergent validation against UKHLS self-reported deprivation |
+| `spatial_holdout_test.py` | Spatial holdout predictive check |
+| `prior_sensitivity.py` | Prior-sensitivity sweep |
+| `nuts_validation.py` | PyMC NUTS cross-check of the INLA posterior |
+| `scaling_benchmark.py` | Runtime scaling benchmark |
+
+Figures are always regenerated from data rather than checked in, so a stale
+hardcoded constant cannot silently outlive the number it came from.
+
+---
+
+## Optional: R-INLA
+
+The primary engine calls R through a subprocess. Install R, then:
+
+```r
+install.packages("INLA",
+  repos = c(getOption("repos"), INLA = "https://inla.r-inla-download.org/R/stable"),
+  dep = TRUE)
+```
+
+INLA is not on CRAN, so a default R install will not have it. Without it,
+`src/inference/inla/` and its tests are unavailable and the PyMC NUTS path in
+`src/inference/model_unified.py` is the usable engine.
+
+---
+
+## Repository layout
+
+```
+src/
+  cli/          entry point with input preflight checks
+  config/       settings.py — every path, constant and mode flag
+  data/         IPF population synthesis, archetypes, synthetic-input generator
+  physics/      EnergyPlus batch driver and client
+  inference/    GP surrogate, LHS sampler, ICAR scaling, NUTS model
+    inla/       primary R-INLA engine (BYM2 + PC priors + RSR)
+  research/     figure regeneration and validation scripts
+  utils/        data contracts, EPW parsing, result cleaning
+tests/
+  unit/         no external data required
+  integration/  real statistical cores, no mocked computation
+  fixtures/     golden baselines (inputs are not redistributable)
+```
+
+Three environment flags change behaviour, all read in
+`src/config/settings.py`: `TEST_MODE` (tiny fixture data), `PILOT_MODE` (real
+data, small draw count) and `USE_FAKE_CITY` (synthetic single-city inputs).
+
+---
+
+## Citation
+
+If you use this code, please cite the archived release:
+
+```bibtex
+@software{buckland_thermal_rationing,
+  author  = {Buckland, Jules},
+  title   = {Separating dwelling heat requirement from household energy
+             rationing at national scale},
+  year    = {2026},
+  doi     = {10.5281/zenodo.21629036},
+  url     = {https://github.com/JulesBuckland/thermal-rationing-england}
+}
+```
+
+The DOI above is the concept DOI and always resolves to the latest version;
+`10.5281/zenodo.21629037` pins the v1.0 submission release.
+
+---
+
+## Licence
+
+Released under the [Creative Commons Attribution 4.0 International
+licence](https://creativecommons.org/licenses/by/4.0/), matching the archived
+Zenodo release.
