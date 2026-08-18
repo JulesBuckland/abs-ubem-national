@@ -31,9 +31,10 @@ tests/fixtures/*
 !tests/fixtures/golden/
 !tests/fixtures/golden/**
 
-# --- Notes, plans and AI tooling ---
-# Research notes, planning docs and assistant instructions stay local. OneDrive
-# is their backup, not git. README.md is the one tracked markdown file.
+# --- Working notes and local tooling ---
+# Research notes and planning documents stay local; OneDrive is their backup,
+# not git. README.md is the one tracked markdown file. The directories below
+# hold per-machine editor and tooling state.
 *.md
 !README.md
 .claude/
