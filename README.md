@@ -3,7 +3,7 @@
 [![Tests](../../actions/workflows/pytest.yml/badge.svg)](../../actions/workflows/pytest.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21629036.svg)](https://doi.org/10.5281/zenodo.21629036)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![Licence: CC BY 4.0](https://img.shields.io/badge/licence-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+[![Licence: CC BY-NC 4.0](https://img.shields.io/badge/licence-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
 A national-scale Bayesian model of England's housing stock that separates two
 things routinely conflated in observed gas consumption:
@@ -34,37 +34,33 @@ model is trying to measure.
 
 ```mermaid
 flowchart TD
-    classDef person fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
-    classDef orchestrator fill:#FFCC33,color:#333333,stroke:#660099,stroke-width:3px
-    classDef logic fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
-    classDef datastore fill:#333333,color:#ffffff,stroke:#FFCC33,stroke-width:2px
-    classDef extLib fill:#f4f4f4,color:#333333,stroke:#333333,stroke-width:2px,stroke-dasharray: 4 4
+    classDef dataset fill:#333333,color:#ffffff,stroke:#FFCC33,stroke-width:2px
+    classDef func fill:#FFCC33,color:#333333,stroke:#333333,stroke-width:2px
+    classDef output fill:#660099,color:#ffffff,stroke:#333333,stroke-width:2px
 
-    User["Researcher<br/>Runs the pipeline"]:::person
-
-    InputFS["Inputs<br/>Census marginals · NEED seed<br/>EnergyPlus LHS results<br/>MSOA boundaries"]:::datastore
-    OutputFS["Outputs<br/>Posterior summaries (.csv)<br/>Traces (.nc)"]:::datastore
-
-    CLI["CLI orchestrator<br/>src/cli/run_inference.py"]:::orchestrator
-
-    subgraph Core ["Physics and spatial estimation"]
+    subgraph Surrogate ["Surrogate training (offline, one-time)"]
         direction TB
-        IPF["Iterative proportional fitting<br/>Synthesises households matching<br/>census marginals per MSOA"]:::logic
-        GP["Gaussian-process surrogate<br/>Maps fabric, form and climate to<br/>required thermal demand T* in O(1)"]:::logic
-        RSR["Restricted spatial regression<br/>Orthogonalises the spatial field<br/>against income deprivation"]:::logic
-        FIT["Inference engine<br/>R-INLA BYM2 + PC priors (primary)<br/>PyMC NUTS ICAR (cross-check)"]:::logic
+        LHS["Latin hypercube sampling<br/>over the archetype design space"]:::func
+        EP["EnergyPlus simulation"]:::func
+        GPTrain["Gaussian-process surrogate<br/>trained on simulation outputs"]:::func
+        LHS --> EP --> GPTrain
     end
 
-    PySAL["GeoPandas / libpysal<br/>MSOA adjacency matrix"]:::extLib
+    subgraph Pipeline ["National inference pipeline"]
+        direction TB
+        Census["Census + NEED datasets"]:::dataset
+        IPF["Iterative proportional fitting<br/>synthetic population, per MSOA"]:::func
+        Apply["Apply GP surrogate<br/>required thermal demand T*"]:::func
+        Boundaries["MSOA boundary data"]:::dataset
+        Fit["Bayesian spatial fit<br/>R-INLA BYM2 + RSR (primary)<br/>PyMC NUTS (cross-check)"]:::func
+        Output["Posterior estimates<br/>and uncertainty intervals"]:::output
 
-    User --> CLI
-    CLI --> InputFS
-    CLI --> IPF
-    IPF -->|synthetic households| GP
-    GP -->|required demand T*| RSR
-    RSR -->|orthogonalised covariate| FIT
-    FIT -->|adjacency| PySAL
-    FIT --> OutputFS
+        Census --> IPF --> Apply
+        Boundaries --> Fit
+        Apply --> Fit --> Output
+    end
+
+    GPTrain -.->|trained surrogate| Apply
 ```
 
 R-INLA is the primary engine: it fits the national model in ~200 s against
@@ -80,8 +76,8 @@ Requires **Python 3.12**. R and INLA are optional — see
 [Optional: R-INLA](#optional-r-inla).
 
 ```bash
-git clone https://github.com/JulesBuckland/abs-ubem-national.git
-cd abs-ubem-national
+git clone https://github.com/JulesBuckland/national-energy-bayesian-network.git
+cd national-energy-bayesian-network
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
@@ -235,7 +231,7 @@ If you use this code, please cite the archived release:
              rationing at national scale},
   year    = {2026},
   doi     = {10.5281/zenodo.21629036},
-  url     = {https://github.com/JulesBuckland/abs-ubem-national}
+  url     = {https://github.com/JulesBuckland/national-energy-bayesian-network}
 }
 ```
 
@@ -246,6 +242,8 @@ The DOI above is the concept DOI and always resolves to the latest version;
 
 ## Licence
 
-Released under the [Creative Commons Attribution 4.0 International
-licence](https://creativecommons.org/licenses/by/4.0/), matching the archived
-Zenodo release.
+Released under the [Creative Commons Attribution-NonCommercial 4.0
+International licence](https://creativecommons.org/licenses/by-nc/4.0/).
+Note: the archived Zenodo release (DOI: 10.5281/zenodo.21629036) predates this
+change and remains under CC BY 4.0, which cannot be revised retroactively;
+this licence governs the current and future state of this repository.
